@@ -54,7 +54,7 @@ class TradeTrackerApp(ctk.CTk):
         try:
             self.iconbitmap(resource_path('icon.ico'))
         except:
-            pass # Failsafe if icon isn't found
+            pass 
             
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("green")
@@ -100,26 +100,27 @@ class TradeTrackerApp(ctk.CTk):
         self.main_frame = ctk.CTkFrame(self, corner_radius=0, fg_color="#121212")
         self.main_frame.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
         self.main_frame.grid_columnconfigure((0, 1, 2), weight=1)
-        self.main_frame.grid_rowconfigure(3, weight=1) # Tables expand
+        self.main_frame.grid_rowconfigure(3, weight=1) 
         
-        # Top Bar (Export / Import DB)
+        # Top Bar (Export / Import DB / Refresh)
         self.top_bar = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         self.top_bar.grid(row=0, column=0, columnspan=3, sticky="e", pady=(0, 10))
-        ctk.CTkButton(self.top_bar, text="Import DB", width=100, corner_radius=8, fg_color="#34495E", hover_color="#2C3E50", command=self.import_db).pack(side="left", padx=5)
-        ctk.CTkButton(self.top_bar, text="Export DB", width=100, corner_radius=8, fg_color="#34495E", hover_color="#2C3E50", command=self.export_db).pack(side="left", padx=5)
+        ctk.CTkButton(self.top_bar, text="Import DB", width=90, corner_radius=8, fg_color="#34495E", hover_color="#2C3E50", command=self.import_db).pack(side="left", padx=5)
+        ctk.CTkButton(self.top_bar, text="Export DB", width=90, corner_radius=8, fg_color="#34495E", hover_color="#2C3E50", command=self.export_db).pack(side="left", padx=5)
+        ctk.CTkButton(self.top_bar, text="Refresh Market", width=120, corner_radius=8, fg_color="#27AE60", hover_color="#2ECC71", command=self.refresh_data).pack(side="left", padx=(15, 5))
 
-        # Summary Cards (Row 1)
+        # Summary Cards
         self.card_val = self.create_summary_card(self.main_frame, "Total Market Value", "$0.00", 1, 0)
         self.card_unreal = self.create_summary_card(self.main_frame, "Unrealized G/L (Holdings)", "$0.00 (0.0%)", 1, 1)
         self.card_real = self.create_summary_card(self.main_frame, "Realized G/L (Recognized)", "$0.00", 1, 2)
         
-        # Graph Area (Row 2)
+        # Graph Area
         self.graph_frame = ctk.CTkFrame(self.main_frame, height=250, corner_radius=15, fg_color="#1e1e1e")
         self.graph_frame.grid(row=2, column=0, columnspan=3, sticky="nsew", pady=(20, 20))
         self.graph_frame.pack_propagate(False)
         self.graph_canvas = None
         
-        # Tables Area (Row 3)
+        # Tables Area
         self.tables_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         self.tables_frame.grid(row=3, column=0, columnspan=3, sticky="nsew")
         self.tables_frame.grid_columnconfigure((0, 1), weight=1)
@@ -146,33 +147,22 @@ class TradeTrackerApp(ctk.CTk):
 
     # --- Database Import / Export ---
     def export_db(self):
-        dest_path = filedialog.asksaveasfilename(
-            defaultextension=".db",
-            filetypes=[("SQLite Database", "*.db")],
-            initialfile="ZenTradeBackup.db",
-            title="Export Database"
-        )
+        dest_path = filedialog.asksaveasfilename(defaultextension=".db", filetypes=[("SQLite Database", "*.db")], initialfile="ZenTradeBackup.db", title="Export Database")
         if dest_path:
             try:
                 shutil.copy2(DB_PATH, dest_path)
-                messagebox.showinfo("Success", f"Database successfully exported to:\n{dest_path}")
+                messagebox.showinfo("Success", f"Database successfully exported!")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to export database:\n{e}")
 
     def import_db(self):
-        if not messagebox.askyesno("Warning", "Importing a database will completely overwrite your current trades and portfolios. Do you wish to continue?"):
-            return
-            
-        src_path = filedialog.askopenfilename(
-            filetypes=[("SQLite Database", "*.db")],
-            title="Select Database to Import"
-        )
-        
+        if not messagebox.askyesno("Warning", "Importing a database will completely overwrite your current trades and portfolios. Do you wish to continue?"): return
+        src_path = filedialog.askopenfilename(filetypes=[("SQLite Database", "*.db")], title="Select Database to Import")
         if src_path:
             try:
                 shutil.copy2(src_path, DB_PATH)
                 messagebox.showinfo("Success", "Database successfully imported!")
-                self.load_portfolios() # Reloads everything to reflect new DB
+                self.load_portfolios() 
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to import database:\n{e}")
 
@@ -183,9 +173,7 @@ class TradeTrackerApp(ctk.CTk):
         conn.close()
         
         if not self.portfolios:
-            self.portfolio_menu.configure(values=["No Portfolios"])
-            self.portfolio_menu.set("No Portfolios")
-            self.current_portfolio_id = None
+            self.portfolio_menu.configure(values=["No Portfolios"]); self.portfolio_menu.set("No Portfolios"); self.current_portfolio_id = None
             self.refresh_data()
             return
             
@@ -207,8 +195,7 @@ class TradeTrackerApp(ctk.CTk):
             try:
                 conn = sqlite3.connect(DB_PATH)
                 conn.execute("INSERT INTO portfolios (name) VALUES (?)", (name.strip(),))
-                conn.commit()
-                conn.close()
+                conn.commit(); conn.close()
                 self.load_portfolios(select_name=name.strip())
             except sqlite3.IntegrityError:
                 messagebox.showerror("Error", "Portfolio exists.")
@@ -222,8 +209,7 @@ class TradeTrackerApp(ctk.CTk):
             try:
                 conn = sqlite3.connect(DB_PATH)
                 conn.execute("UPDATE portfolios SET name=? WHERE id=?", (new_name.strip(), self.current_portfolio_id))
-                conn.commit()
-                conn.close()
+                conn.commit(); conn.close()
                 self.load_portfolios(select_name=new_name.strip())
             except:
                 messagebox.showerror("Error", "Portfolio exists.")
@@ -234,8 +220,7 @@ class TradeTrackerApp(ctk.CTk):
             conn = sqlite3.connect(DB_PATH)
             conn.execute("DELETE FROM trades WHERE portfolio_id=?", (self.current_portfolio_id,))
             conn.execute("DELETE FROM portfolios WHERE id=?", (self.current_portfolio_id,))
-            conn.commit()
-            conn.close()
+            conn.commit(); conn.close()
             self.load_portfolios()
 
     # --- Trade Logic & Math ---
@@ -253,25 +238,23 @@ class TradeTrackerApp(ctk.CTk):
         conn = sqlite3.connect(DB_PATH)
         conn.execute("INSERT INTO trades (portfolio_id, ticker, type, shares, price, date) VALUES (?, ?, ?, ?, ?, ?)",
                      (self.current_portfolio_id, ticker, self.type_menu.get(), shares, price, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-        conn.commit()
-        conn.close()
+        conn.commit(); conn.close()
         
         self.shares_entry.delete(0, 'end'); self.price_entry.delete(0, 'end')
         self.refresh_data()
 
     def fetch_live_prices(self, tickers):
-        """ Runs in a background thread to prevent UI freezing """
         for ticker in tickers:
             try:
                 stock = yf.Ticker(ticker)
                 self.live_prices[ticker] = stock.fast_info.last_price
             except:
-                pass # If it fails, we will fall back to average cost later
+                pass 
         self.after(0, self.update_ui_with_data)
 
     def refresh_data(self):
-        self.card_val.configure(text="Loading...")
-        self.card_unreal.configure(text="Loading...")
+        self.card_val.configure(text="Loading Data...")
+        self.card_unreal.configure(text="Fetching Prices...")
         threading.Thread(target=self.process_trade_math, daemon=True).start()
 
     def process_trade_math(self):
@@ -306,7 +289,6 @@ class TradeTrackerApp(ctk.CTk):
         self.fetch_live_prices(active_tickers)
 
     def update_ui_with_data(self):
-        # Clear tables
         for widget in self.holdings_frame.winfo_children() + self.history_frame.winfo_children(): widget.destroy()
 
         if not self.current_portfolio_id:
@@ -332,11 +314,8 @@ class TradeTrackerApp(ctk.CTk):
                 shares = data['shares']
                 avg_cost = data['avg_cost']
                 book_val = shares * avg_cost
-                
-                # Use live price if fetched, otherwise fallback to book cost so it doesn't break
                 current_price = self.live_prices.get(ticker, avg_cost) 
                 market_val = shares * current_price
-                
                 unreal_dlr = market_val - book_val
                 unreal_pct = (unreal_dlr / book_val * 100) if book_val > 0 else 0
                 
@@ -355,7 +334,6 @@ class TradeTrackerApp(ctk.CTk):
                 ctk.CTkLabel(self.holdings_frame, text=f"${unreal_dlr:.2f} ({unreal_pct:.1f}%)", text_color=color).grid(row=row, column=4, padx=10, pady=2, sticky="w")
                 row += 1
 
-        # History Table
         for r, (ticker, t_type, shares, price, date) in enumerate(reversed(self.trades), start=1):
             t_color = "#2ECC71" if t_type == "Buy" else "#E74C3C"
             ctk.CTkLabel(self.history_frame, text=date.split()[0]).grid(row=r, column=0, padx=10, pady=2, sticky="w")
@@ -364,19 +342,15 @@ class TradeTrackerApp(ctk.CTk):
             ctk.CTkLabel(self.history_frame, text=str(shares)).grid(row=r, column=3, padx=10, pady=2, sticky="w")
             ctk.CTkLabel(self.history_frame, text=f"${price:.2f}").grid(row=r, column=4, padx=10, pady=2, sticky="w")
 
-        # Update Summary Cards
         total_unreal_dlr = total_market_value - total_book_value
         total_unreal_pct = (total_unreal_dlr / total_book_value * 100) if total_book_value > 0 else 0
         
         self.card_val.configure(text=f"${total_market_value:,.2f}")
-        
         u_color = "#2ECC71" if total_unreal_dlr >= 0 else "#E74C3C"
         self.card_unreal.configure(text=f"${total_unreal_dlr:,.2f} ({total_unreal_pct:,.1f}%)", text_color=u_color)
-        
         r_color = "#2ECC71" if self.realized_gl >= 0 else "#E74C3C"
         self.card_real.configure(text=f"${self.realized_gl:,.2f}", text_color=r_color)
         
-        # Update Dropdown
         active_tickers = [tick for tick, data in self.holdings.items() if data['shares'] > 0]
         self.ticker_combo.configure(values=active_tickers if active_tickers else ["Type new ticker..."])
         self.ticker_combo.set(active_tickers[0] if active_tickers else "Type new ticker...")
@@ -410,4 +384,12 @@ class TradeTrackerApp(ctk.CTk):
 if __name__ == "__main__":
     init_db()
     app = TradeTrackerApp()
+    
+    # Close the PyInstaller Splash Screen once the app is ready
+    try:
+        import pyi_splash
+        pyi_splash.close()
+    except ImportError:
+        pass
+        
     app.mainloop()
