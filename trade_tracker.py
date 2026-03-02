@@ -51,7 +51,6 @@ class PortfolioDialog(ctk.CTkToplevel):
         self.title(title)
         self.geometry("350x180")
         
-        # Center relative to the main app window
         x = master.winfo_x() + (master.winfo_width() // 2) - 175
         y = master.winfo_y() + (master.winfo_height() // 2) - 90
         self.geometry(f"+{x}+{y}")
@@ -72,8 +71,6 @@ class PortfolioDialog(ctk.CTkToplevel):
         self.entry = ctk.CTkEntry(frame, width=250)
         self.entry.pack(pady=(0, 20))
         self.entry.focus()
-        
-        # Bind Enter key to submit
         self.entry.bind("<Return>", lambda event: self.submit())
         
         ctk.CTkButton(frame, text="Submit", width=120, command=self.submit).pack()
@@ -93,6 +90,9 @@ class TradeTrackerApp(ctk.CTk):
         self.title("Zen Trade Tracker")
         self.center_window(1150, 850)
         
+        # FIX: Protocol to handle window closing and kill background tasks
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
         try:
             self.iconbitmap(resource_path('icon.ico'))
         except:
@@ -107,6 +107,13 @@ class TradeTrackerApp(ctk.CTk):
         
         self.setup_ui()
         self.load_portfolios()
+
+    def on_closing(self):
+        """ Cleans up background threads and closed the app entirely """
+        plt.close('all') # Close matplotlib figures
+        self.quit()
+        self.destroy()
+        sys.exit(0) # Force exit to clear all background processes
 
     def center_window(self, width, height):
         screen_width = self.winfo_screenwidth()
@@ -142,7 +149,6 @@ class TradeTrackerApp(ctk.CTk):
         self.price_entry = ctk.CTkEntry(self.sidebar, placeholder_text="Price", corner_radius=8)
         self.price_entry.grid(row=6, column=0, padx=20, pady=5)
         
-        # Custom Buy/Sell Buttons
         self.trade_btn_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         self.trade_btn_frame.grid(row=7, column=0, padx=20, pady=15)
         ctk.CTkButton(self.trade_btn_frame, text="Buy", fg_color="#27AE60", hover_color="#2ECC71", width=70, font=ctk.CTkFont(weight="bold"), command=lambda: self.add_trade("Buy")).pack(side="left", padx=5)
@@ -299,6 +305,7 @@ class TradeTrackerApp(ctk.CTk):
     def refresh_data(self):
         self.card_val.configure(text="Loading Data...")
         self.card_unreal.configure(text="Fetching Prices...")
+        # FIX: Daemon thread ensures it dies when app closes
         threading.Thread(target=self.process_trade_math, daemon=True).start()
 
     def process_trade_math(self):
@@ -346,7 +353,6 @@ class TradeTrackerApp(ctk.CTk):
         chart_labels = []
         chart_sizes = []
 
-        # --- Draw Responsive Holdings Table ---
         header_frame_h = ctk.CTkFrame(self.holdings_frame, fg_color="transparent")
         header_frame_h.pack(fill="x", pady=(0, 5))
         header_frame_h.grid_columnconfigure((0,1,2,3,4), weight=1)
@@ -381,7 +387,6 @@ class TradeTrackerApp(ctk.CTk):
             ctk.CTkLabel(row_frame, text=f"${current_price:,.2f}", anchor="w").grid(row=0, column=3, sticky="ew", padx=10, pady=8)
             ctk.CTkLabel(row_frame, text=f"${unreal_dlr:,.2f} ({unreal_pct:.1f}%)", text_color=color, anchor="w").grid(row=0, column=4, sticky="ew", padx=10, pady=8)
 
-        # --- Draw Responsive History Table ---
         header_frame_hist = ctk.CTkFrame(self.history_frame, fg_color="transparent")
         header_frame_hist.pack(fill="x", pady=(0, 5))
         header_frame_hist.grid_columnconfigure((0,1,2,3,4), weight=1)
@@ -402,7 +407,6 @@ class TradeTrackerApp(ctk.CTk):
             ctk.CTkLabel(row_frame, text=f"{shares:,.2f}", anchor="w").grid(row=0, column=3, sticky="ew", padx=10, pady=8)
             ctk.CTkLabel(row_frame, text=f"${price:,.2f}", anchor="w").grid(row=0, column=4, sticky="ew", padx=10, pady=8)
 
-        # Update Top Level Metrics
         total_unreal_dlr = total_market_value - total_book_value
         total_unreal_pct = (total_unreal_dlr / total_book_value * 100) if total_book_value > 0 else 0
         
