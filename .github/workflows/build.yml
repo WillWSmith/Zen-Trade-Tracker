@@ -1,7 +1,7 @@
-name: Build Trade Tracker EXE
+name: Build Installer EXE
 
 on: 
-  workflow_dispatch: # Allows you to run it manually with a button click
+  workflow_dispatch:
 
 jobs:
   build:
@@ -21,12 +21,18 @@ jobs:
         python -m pip install --upgrade pip
         pip install pyinstaller customtkinter
 
-    - name: Build EXE with PyInstaller
+    - name: Build EXE with PyInstaller and Icon
       run: |
-        pyinstaller --noconsole --onefile trade_tracker.py
+        pyinstaller --noconsole --onefile --icon=icon.ico trade_tracker.py
 
-    - name: Upload EXE as Artifact
+    - name: Install Inno Setup
+      run: choco install innosetup
+
+    - name: Compile Installer
+      run: iscc setup.iss
+
+    - name: Upload Installer as Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: Zen-Trade-Tracker
-        path: dist/trade_tracker.exe
+        name: Zen-Trade-Tracker-Setup
+        path: Output/Zen_Trade_Tracker_Installer.exe
