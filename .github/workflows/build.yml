@@ -19,11 +19,11 @@ jobs:
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pyinstaller customtkinter
+        pip install pyinstaller customtkinter yfinance matplotlib
 
     - name: Build EXE with PyInstaller and Icon
       run: |
-        pyinstaller --noconsole --onefile --icon=icon.ico trade_tracker.py
+        pyinstaller --noconsole --onefile --icon=icon.ico --add-data "icon.ico;." trade_tracker.py
 
     - name: Install Inno Setup
       run: choco install innosetup
