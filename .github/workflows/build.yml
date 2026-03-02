@@ -1,0 +1,32 @@
+name: Build Trade Tracker EXE
+
+on: 
+  workflow_dispatch: # Allows you to run it manually with a button click
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller customtkinter
+
+    - name: Build EXE with PyInstaller
+      run: |
+        pyinstaller --noconsole --onefile trade_tracker.py
+
+    - name: Upload EXE as Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Zen-Trade-Tracker
+        path: dist/trade_tracker.exe
