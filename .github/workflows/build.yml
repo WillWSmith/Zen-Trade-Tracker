@@ -21,9 +21,9 @@ jobs:
         python -m pip install --upgrade pip
         pip install pyinstaller customtkinter yfinance matplotlib
 
-    - name: Build EXE with PyInstaller and Icon
+    - name: Build EXE with PyInstaller, Icon, and Splash
       run: |
-        pyinstaller --noconsole --onefile --icon=icon.ico --add-data "icon.ico;." trade_tracker.py
+        pyinstaller --noconsole --onefile --icon=icon.ico --splash=splash.png --add-data "icon.ico;." trade_tracker.py
 
     - name: Install Inno Setup
       run: choco install innosetup
