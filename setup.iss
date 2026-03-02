@@ -17,3 +17,6 @@ Source: "icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 [Icons]
 Name: "{autodesktop}\Zen Trade Tracker"; Filename: "{app}\trade_tracker.exe"; IconFilename: "{app}\icon.ico"
 Name: "{group}\Zen Trade Tracker"; Filename: "{app}\trade_tracker.exe"; IconFilename: "{app}\icon.ico"
+
+[Run]
+Filename: "{app}\trade_tracker.exe"; Description: "Launch Zen Trade Tracker"; Flags: nowait postinstall skipifsilent
