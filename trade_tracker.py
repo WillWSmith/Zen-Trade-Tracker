@@ -11,6 +11,7 @@ from customtkinter import filedialog
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
+# --- Helpers ---
 def resource_path(relative_path):
     try:
         base_path = sys._MEIPASS
@@ -18,6 +19,7 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
+# --- AppData Database Setup ---
 APP_DATA_DIR = os.path.join(os.environ.get('APPDATA', ''), 'ZenTradeTracker')
 os.makedirs(APP_DATA_DIR, exist_ok=True)
 DB_PATH = os.path.join(APP_DATA_DIR, 'trades_local.db')
@@ -42,6 +44,49 @@ def init_db():
     conn.commit()
     conn.close()
 
+# --- Custom Dialog to Ensure Icon Shows ---
+class PortfolioDialog(ctk.CTkToplevel):
+    def __init__(self, master, title, text):
+        super().__init__(master)
+        self.title(title)
+        self.geometry("350x180")
+        
+        # Center relative to the main app window
+        x = master.winfo_x() + (master.winfo_width() // 2) - 175
+        y = master.winfo_y() + (master.winfo_height() // 2) - 90
+        self.geometry(f"+{x}+{y}")
+        
+        try:
+            self.iconbitmap(resource_path('icon.ico'))
+        except:
+            pass
+            
+        self.result = None
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+        
+        frame = ctk.CTkFrame(self, fg_color="transparent")
+        frame.grid(row=0, column=0, sticky="nsew", padx=20, pady=20)
+        
+        ctk.CTkLabel(frame, text=text, font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(10, 10))
+        self.entry = ctk.CTkEntry(frame, width=250)
+        self.entry.pack(pady=(0, 20))
+        self.entry.focus()
+        
+        # Bind Enter key to submit
+        self.entry.bind("<Return>", lambda event: self.submit())
+        
+        ctk.CTkButton(frame, text="Submit", width=120, command=self.submit).pack()
+        
+        self.transient(master)
+        self.grab_set()
+        self.wait_window()
+        
+    def submit(self):
+        self.result = self.entry.get()
+        self.destroy()
+
+# --- Main App GUI ---
 class TradeTrackerApp(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -91,13 +136,17 @@ class TradeTrackerApp(ctk.CTk):
         ctk.CTkLabel(self.sidebar, text="Log New Trade", font=ctk.CTkFont(size=16, weight="bold")).grid(row=3, column=0, pady=(30, 5))
         self.ticker_combo = ctk.CTkComboBox(self.sidebar, values=["Type or Select..."], corner_radius=8)
         self.ticker_combo.grid(row=4, column=0, padx=20, pady=5)
-        self.type_menu = ctk.CTkOptionMenu(self.sidebar, values=["Buy", "Sell"], corner_radius=8)
-        self.type_menu.grid(row=5, column=0, padx=20, pady=5)
+        
         self.shares_entry = ctk.CTkEntry(self.sidebar, placeholder_text="Shares", corner_radius=8)
-        self.shares_entry.grid(row=6, column=0, padx=20, pady=5)
+        self.shares_entry.grid(row=5, column=0, padx=20, pady=5)
         self.price_entry = ctk.CTkEntry(self.sidebar, placeholder_text="Price", corner_radius=8)
-        self.price_entry.grid(row=7, column=0, padx=20, pady=5)
-        ctk.CTkButton(self.sidebar, text="Submit Trade", corner_radius=8, font=ctk.CTkFont(weight="bold"), command=self.add_trade).grid(row=8, column=0, padx=20, pady=15)
+        self.price_entry.grid(row=6, column=0, padx=20, pady=5)
+        
+        # Custom Buy/Sell Buttons
+        self.trade_btn_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        self.trade_btn_frame.grid(row=7, column=0, padx=20, pady=15)
+        ctk.CTkButton(self.trade_btn_frame, text="Buy", fg_color="#27AE60", hover_color="#2ECC71", width=70, font=ctk.CTkFont(weight="bold"), command=lambda: self.add_trade("Buy")).pack(side="left", padx=5)
+        ctk.CTkButton(self.trade_btn_frame, text="Sell", fg_color="#E74C3C", hover_color="#C0392B", width=70, font=ctk.CTkFont(weight="bold"), command=lambda: self.add_trade("Sell")).pack(side="left", padx=5)
 
         # --- Main Content Area ---
         self.main_frame = ctk.CTkFrame(self, corner_radius=0, fg_color="#0d0d0d")
@@ -185,8 +234,8 @@ class TradeTrackerApp(ctk.CTk):
             self.refresh_data()
 
     def add_portfolio(self):
-        dialog = ctk.CTkInputDialog(text="Enter new portfolio name:", title="Add Portfolio")
-        name = dialog.get_input()
+        dialog = PortfolioDialog(self, "Add Portfolio", "Enter new portfolio name:")
+        name = dialog.result
         if name:
             try:
                 conn = sqlite3.connect(DB_PATH)
@@ -199,8 +248,8 @@ class TradeTrackerApp(ctk.CTk):
     def edit_portfolio(self):
         if not self.current_portfolio_id: return
         current_name = self.portfolio_menu.get()
-        dialog = ctk.CTkInputDialog(text=f"Rename '{current_name}' to:", title="Edit Portfolio")
-        new_name = dialog.get_input()
+        dialog = PortfolioDialog(self, "Edit Portfolio", f"Rename '{current_name}' to:")
+        new_name = dialog.result
         if new_name and new_name.strip() != current_name:
             try:
                 conn = sqlite3.connect(DB_PATH)
@@ -219,7 +268,7 @@ class TradeTrackerApp(ctk.CTk):
             conn.commit(); conn.close()
             self.load_portfolios()
 
-    def add_trade(self):
+    def add_trade(self, trade_type):
         if not self.current_portfolio_id: return
         ticker = self.ticker_combo.get().strip().upper()
         if not ticker or ticker == "TYPE OR SELECT...": return
@@ -232,7 +281,7 @@ class TradeTrackerApp(ctk.CTk):
             
         conn = sqlite3.connect(DB_PATH)
         conn.execute("INSERT INTO trades (portfolio_id, ticker, type, shares, price, date) VALUES (?, ?, ?, ?, ?, ?)",
-                     (self.current_portfolio_id, ticker, self.type_menu.get(), shares, price, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                     (self.current_portfolio_id, ticker, trade_type, shares, price, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         conn.commit(); conn.close()
         
         self.shares_entry.delete(0, 'end'); self.price_entry.delete(0, 'end')
@@ -297,17 +346,20 @@ class TradeTrackerApp(ctk.CTk):
         chart_labels = []
         chart_sizes = []
 
-        # --- Draw Holdings Table ---
+        # --- Draw Responsive Holdings Table ---
         header_frame_h = ctk.CTkFrame(self.holdings_frame, fg_color="transparent")
         header_frame_h.pack(fill="x", pady=(0, 5))
+        header_frame_h.grid_columnconfigure((0,1,2,3,4), weight=1)
+        
         for col, text in enumerate(["Ticker", "Shares", "Avg Cost", "Mkt Price", "Unrealized"]):
-            ctk.CTkLabel(header_frame_h, text=text, font=ctk.CTkFont(weight="bold"), text_color="#a0a0a0", width=80, anchor="w").pack(side="left", padx=10)
+            ctk.CTkLabel(header_frame_h, text=text, font=ctk.CTkFont(weight="bold"), text_color="#a0a0a0", anchor="w").grid(row=0, column=col, sticky="ew", padx=10)
         
         active_holdings = {k:v for k,v in self.holdings.items() if v['shares'] > 0}
         for index, (ticker, data) in enumerate(active_holdings.items()):
-            bg_color = "#1a1a1a" if index % 2 == 0 else "#242424" # Zebra Striping
+            bg_color = "#1a1a1a" if index % 2 == 0 else "#242424" 
             row_frame = ctk.CTkFrame(self.holdings_frame, fg_color=bg_color, corner_radius=5)
             row_frame.pack(fill="x", pady=2)
+            row_frame.grid_columnconfigure((0,1,2,3,4), weight=1)
             
             shares, avg_cost = data['shares'], data['avg_cost']
             book_val = shares * avg_cost
@@ -323,29 +375,32 @@ class TradeTrackerApp(ctk.CTk):
 
             color = "#2ECC71" if unreal_dlr >= 0 else "#E74C3C"
             
-            ctk.CTkLabel(row_frame, text=ticker, font=ctk.CTkFont(weight="bold"), width=80, anchor="w").pack(side="left", padx=10, pady=5)
-            ctk.CTkLabel(row_frame, text=f"{shares:,.2f}", width=80, anchor="w").pack(side="left", padx=10, pady=5)
-            ctk.CTkLabel(row_frame, text=f"${avg_cost:,.2f}", width=80, anchor="w").pack(side="left", padx=10, pady=5)
-            ctk.CTkLabel(row_frame, text=f"${current_price:,.2f}", width=80, anchor="w").pack(side="left", padx=10, pady=5)
-            ctk.CTkLabel(row_frame, text=f"${unreal_dlr:,.2f} ({unreal_pct:.1f}%)", text_color=color, width=80, anchor="w").pack(side="left", padx=10, pady=5)
+            ctk.CTkLabel(row_frame, text=ticker, font=ctk.CTkFont(weight="bold"), anchor="w").grid(row=0, column=0, sticky="ew", padx=10, pady=8)
+            ctk.CTkLabel(row_frame, text=f"{shares:,.2f}", anchor="w").grid(row=0, column=1, sticky="ew", padx=10, pady=8)
+            ctk.CTkLabel(row_frame, text=f"${avg_cost:,.2f}", anchor="w").grid(row=0, column=2, sticky="ew", padx=10, pady=8)
+            ctk.CTkLabel(row_frame, text=f"${current_price:,.2f}", anchor="w").grid(row=0, column=3, sticky="ew", padx=10, pady=8)
+            ctk.CTkLabel(row_frame, text=f"${unreal_dlr:,.2f} ({unreal_pct:.1f}%)", text_color=color, anchor="w").grid(row=0, column=4, sticky="ew", padx=10, pady=8)
 
-        # --- Draw History Table ---
+        # --- Draw Responsive History Table ---
         header_frame_hist = ctk.CTkFrame(self.history_frame, fg_color="transparent")
         header_frame_hist.pack(fill="x", pady=(0, 5))
+        header_frame_hist.grid_columnconfigure((0,1,2,3,4), weight=1)
+        
         for col, text in enumerate(["Date", "Type", "Ticker", "Shares", "Price"]):
-            ctk.CTkLabel(header_frame_hist, text=text, font=ctk.CTkFont(weight="bold"), text_color="#a0a0a0", width=75, anchor="w").pack(side="left", padx=10)
+            ctk.CTkLabel(header_frame_hist, text=text, font=ctk.CTkFont(weight="bold"), text_color="#a0a0a0", anchor="w").grid(row=0, column=col, sticky="ew", padx=10)
 
         for index, (ticker, t_type, shares, price, date) in enumerate(reversed(self.trades)):
-            bg_color = "#1a1a1a" if index % 2 == 0 else "#242424" # Zebra Striping
+            bg_color = "#1a1a1a" if index % 2 == 0 else "#242424"
             row_frame = ctk.CTkFrame(self.history_frame, fg_color=bg_color, corner_radius=5)
             row_frame.pack(fill="x", pady=2)
+            row_frame.grid_columnconfigure((0,1,2,3,4), weight=1)
             
             t_color = "#2ECC71" if t_type == "Buy" else "#E74C3C"
-            ctk.CTkLabel(row_frame, text=date.split()[0], width=75, anchor="w").pack(side="left", padx=10, pady=5)
-            ctk.CTkLabel(row_frame, text=t_type, text_color=t_color, width=75, font=ctk.CTkFont(weight="bold"), anchor="w").pack(side="left", padx=10, pady=5)
-            ctk.CTkLabel(row_frame, text=ticker, width=75, anchor="w").pack(side="left", padx=10, pady=5)
-            ctk.CTkLabel(row_frame, text=f"{shares:,.2f}", width=75, anchor="w").pack(side="left", padx=10, pady=5)
-            ctk.CTkLabel(row_frame, text=f"${price:,.2f}", width=75, anchor="w").pack(side="left", padx=10, pady=5)
+            ctk.CTkLabel(row_frame, text=date.split()[0], anchor="w").grid(row=0, column=0, sticky="ew", padx=10, pady=8)
+            ctk.CTkLabel(row_frame, text=t_type, text_color=t_color, font=ctk.CTkFont(weight="bold"), anchor="w").grid(row=0, column=1, sticky="ew", padx=10, pady=8)
+            ctk.CTkLabel(row_frame, text=ticker, anchor="w").grid(row=0, column=2, sticky="ew", padx=10, pady=8)
+            ctk.CTkLabel(row_frame, text=f"{shares:,.2f}", anchor="w").grid(row=0, column=3, sticky="ew", padx=10, pady=8)
+            ctk.CTkLabel(row_frame, text=f"${price:,.2f}", anchor="w").grid(row=0, column=4, sticky="ew", padx=10, pady=8)
 
         # Update Top Level Metrics
         total_unreal_dlr = total_market_value - total_book_value
