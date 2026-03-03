@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zen Trade Tracker</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <nav class="sidebar">
+            <div class="brand">
+                <h1 class="glow-text">ZEN</h1>
+                <p>PORTFOLIOS</p>
+            </div>
+            
+            <div class="portfolio-controls">
+                <select id="portfolio-select" onchange="changePortfolio()"></select>
+                <div class="btn-group">
+                    <button class="btn-outline" onclick="addPortfolio()">Add</button>
+                    <button class="btn-outline" onclick="editPortfolio()">Edit</button>
+                    <button class="btn-outline danger" onclick="deletePortfolio()">Del</button>
+                </div>
+            </div>
+
+            <div class="trade-controls">
+                <p class="section-title">LOG TRADE</p>
+                <input type="text" id="ticker-input" placeholder="TICKER (e.g., BDIV.TO)">
+                <input type="number" id="shares-input" placeholder="Shares">
+                <input type="number" id="price-input" placeholder="Price">
+                <div class="btn-group">
+                    <button class="btn-buy" onclick="submitTrade('Buy')">BUY</button>
+                    <button class="btn-sell" onclick="submitTrade('Sell')">SELL</button>
+                </div>
+            </div>
+        </nav>
+
+        <main class="dashboard">
+            <header class="top-bar">
+                <h2>Dashboard</h2>
+                <div class="window-controls">
+                    <button class="btn-outline" onclick="pywebview.api.import_db()">Import DB</button>
+                    <button class="btn-outline" onclick="pywebview.api.export_db()">Export DB</button>
+                    <button class="btn-glow" onclick="refreshData()">Refresh</button>
+                </div>
+            </header>
+
+            <div class="summary-cards">
+                <div class="card">
+                    <span class="card-title">Market Value</span>
+                    <h3 id="val-market">$0.00</h3>
+                </div>
+                <div class="card">
+                    <span class="card-title">Unrealized G/L</span>
+                    <h3 id="val-unreal">$0.00 (0.0%)</h3>
+                </div>
+                <div class="card">
+                    <span class="card-title">Realized G/L</span>
+                    <h3 id="val-real">$0.00</h3>
+                </div>
+            </div>
+
+            <div class="chart-container glass-panel">
+                <canvas id="equityChart"></canvas>
+            </div>
+
+            <div class="tables-container">
+                <div class="table-wrapper glass-panel">
+                    <h3>Current Holdings</h3>
+                    <table id="holdings-table">
+                        <thead>
+                            <tr><th>Ticker</th><th>Shares</th><th>Avg Cost</th><th>Mkt Price</th><th>Unrealized</th></tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div class="table-wrapper glass-panel">
+                    <h3>Trade History</h3>
+                    <table id="history-table">
+                        <thead>
+                            <tr><th>Date</th><th>Type</th><th>Ticker</th><th>Shares</th><th>Price</th></tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
