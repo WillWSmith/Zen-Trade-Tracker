@@ -62,7 +62,17 @@
             </div>
 
             <div class="chart-container glass-panel">
-                <canvas id="equityChart"></canvas>
+                <div class="chart-header">
+                    <h3>Portfolio Equity</h3>
+                    <div class="chart-filters">
+                        <button class="tf-btn active" onclick="updateChartTimeframe('All Time')">All Time</button>
+                        <button class="tf-btn" onclick="updateChartTimeframe('1Y')">1Y</button>
+                        <button class="tf-btn" onclick="updateChartTimeframe('1M')">1M</button>
+                    </div>
+                </div>
+                <div class="canvas-wrapper">
+                    <canvas id="equityChart"></canvas>
+                </div>
             </div>
 
             <div class="tables-container">
