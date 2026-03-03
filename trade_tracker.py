@@ -138,7 +138,8 @@ class BackendAPI:
             start_str = actual_start_date.strftime("%Y-%m-%d")
 
             trades_df = pd.DataFrame(raw_trades, columns=['ticker', 'type', 'shares', 'price', 'date'])
-            trades_df['date'] = pd.to_datetime(trades_df['date']).dt.tz_localize(None).dt.floor('D')
+            # BUG FIX: Safely parse to datetime without forcing a timezone strip
+            trades_df['date'] = pd.to_datetime(trades_df['date']).dt.floor('D')
 
             def get_share_change(row):
                 if row['type'] == 'Buy': return row['shares']
@@ -169,7 +170,10 @@ class BackendAPI:
                     try:
                         df = yf.Ticker(ticker).history(start=start_str)
                         if not df.empty:
-                            df.index = df.index.tz_localize(None).floor('D')
+                            # BUG FIX: Safely strip timezone only if it actually exists in the Yahoo data
+                            if df.index.tz is not None:
+                                df.index = df.index.tz_localize(None)
+                            df.index = df.index.floor('D')
                             hist_prices[ticker] = df['Close']
                     except: pass
                     
@@ -190,7 +194,6 @@ class BackendAPI:
                     chart_dates = [d.strftime('%b %d, %Y') for d in daily_total_account.index]
                     chart_values = daily_total_account.values.tolist()
                     
-                    # Generate individual holding charts for the carousel
                     for ticker in active_tickers:
                         if ticker in common_tickers:
                             t_equity = daily_balances_aligned[ticker] * hist_prices[ticker]
@@ -208,7 +211,6 @@ class BackendAPI:
                 chart_dates = [d.strftime('%b %d, %Y') for d in daily_cash_limited.index]
                 chart_values = daily_cash_limited.values.tolist()
 
-        # Sanitize NaN out of outputs to prevent JS crashes
         chart_values = [0 if pd.isna(x) else float(x) for x in chart_values]
         history_array = [{"date": d, "type": t, "ticker": tick, "shares": float(s), "price": float(p)} for tick, t, s, p, d in reversed(raw_trades)]
 
