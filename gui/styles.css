@@ -14,7 +14,6 @@ body { background-color: var(--bg-black); color: var(--text-main); overflow: hid
 
 .app-container { display: flex; height: 100vh; }
 
-/* Sidebar */
 .sidebar { width: 260px; background-color: var(--panel-dark); padding: 30px 20px; display: flex; flex-direction: column; gap: 30px; border-right: 1px solid #222; }
 .brand h1 { color: var(--nvidia-green); font-size: 2.5rem; letter-spacing: 2px; text-shadow: 0 0 10px var(--nvidia-green-glow); }
 .brand p { color: var(--text-muted); font-size: 0.8rem; letter-spacing: 1px; }
@@ -34,7 +33,6 @@ button { flex: 1; padding: 10px; border: none; border-radius: 6px; font-weight: 
 .btn-glow { background: var(--nvidia-green); color: black; padding: 10px 20px; }
 .btn-glow:hover { box-shadow: 0 0 15px var(--nvidia-green-glow); }
 
-/* Dashboard */
 .dashboard { flex: 1; padding: 30px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
 .top-bar { display: flex; justify-content: space-between; align-items: center; }
 .window-controls { display: flex; gap: 10px; }
@@ -46,17 +44,18 @@ button { flex: 1; padding: 10px; border: none; border-radius: 6px; font-weight: 
 
 .glass-panel { background: rgba(18, 18, 18, 0.7); backdrop-filter: blur(10px); border: 1px solid #222; border-radius: 12px; padding: 20px; }
 
-/* Dynamic Chart UI */
-.chart-container { height: 350px; display: flex; flex-direction: column; }
+/* Dual Chart Layout */
+.dual-chart-container { display: flex; gap: 20px; height: 320px; }
+.chart-box { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .chart-header h3 { color: var(--text-muted); font-size: 1rem; text-transform: uppercase; }
 .chart-filters { display: flex; gap: 5px; background: #0a0a0a; padding: 4px; border-radius: 6px; border: 1px solid #333; }
-.tf-btn { background: transparent; color: var(--text-muted); padding: 5px 15px; font-size: 0.85rem; border-radius: 4px; transition: 0.2s; }
+.tf-btn { background: transparent; color: var(--text-muted); padding: 5px 12px; font-size: 0.85rem; border-radius: 4px; transition: 0.2s; }
 .tf-btn:hover { color: var(--text-main); }
 .tf-btn.active { background: var(--panel-light); color: var(--nvidia-green); font-weight: bold; }
-.canvas-wrapper { flex: 1; position: relative; }
+.canvas-wrapper { flex: 1; position: relative; width: 100%; }
 
-.tables-container { display: flex; gap: 20px; flex: 1; min-height: 300px; }
+.tables-container { display: flex; gap: 20px; flex: 1; min-height: 250px; }
 .table-wrapper { flex: 1; overflow-y: auto; }
 .table-wrapper h3 { color: var(--text-muted); margin-bottom: 15px; font-size: 1rem; text-transform: uppercase; }
 
