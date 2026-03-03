@@ -34,6 +34,15 @@
                     <button class="btn-sell" onclick="submitTrade('Sell')">SELL</button>
                 </div>
             </div>
+
+            <div class="trade-controls" style="margin-top: 20px;">
+                <p class="section-title">MANAGE CASH</p>
+                <input type="number" id="cash-input" placeholder="Amount ($)">
+                <div class="btn-group">
+                    <button class="btn-outline" style="color: var(--nvidia-green); border-color: var(--nvidia-green);" onclick="submitCash('Deposit')">DEPOSIT</button>
+                    <button class="btn-outline" style="color: var(--danger); border-color: var(--danger);" onclick="submitCash('Withdraw')">WITHDRAW</button>
+                </div>
+            </div>
         </nav>
 
         <main class="dashboard">
@@ -48,8 +57,12 @@
 
             <div class="summary-cards">
                 <div class="card">
-                    <span class="card-title">Market Value</span>
-                    <h3 id="val-market">$0.00</h3>
+                    <span class="card-title">Total Account</span>
+                    <h3 id="val-account">$0.00</h3>
+                </div>
+                <div class="card">
+                    <span class="card-title">Available Cash</span>
+                    <h3 id="val-cash">$0.00</h3>
                 </div>
                 <div class="card">
                     <span class="card-title">Unrealized G/L</span>
@@ -63,7 +76,7 @@
 
             <div class="chart-container glass-panel">
                 <div class="chart-header">
-                    <h3>Portfolio Equity</h3>
+                    <h3>Portfolio Value</h3>
                     <div class="chart-filters">
                         <button class="tf-btn active" onclick="updateChartTimeframe('All Time')">All Time</button>
                         <button class="tf-btn" onclick="updateChartTimeframe('1Y')">1Y</button>
