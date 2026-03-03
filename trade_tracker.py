@@ -2,10 +2,10 @@ import sqlite3
 import datetime
 import os
 import sys
-import shutil
 import yfinance as yf
 import pandas as pd
 import webview
+import csv
 
 APP_DATA_DIR = os.path.join(os.environ.get('APPDATA', ''), 'ZenTradeTracker')
 os.makedirs(APP_DATA_DIR, exist_ok=True)
@@ -67,12 +67,9 @@ class BackendAPI:
         realized_gl = 0.0
         total_cash = 0.0
         
-        # Calculate current holdings, cash balances, and realized gains
         for ticker, t_type, shares, price, date in raw_trades:
-            if t_type == 'Deposit':
-                total_cash += shares
-            elif t_type == 'Withdraw':
-                total_cash -= shares
+            if t_type == 'Deposit': total_cash += shares
+            elif t_type == 'Withdraw': total_cash -= shares
             elif t_type == 'Buy':
                 total_cash -= (shares * price)
                 if ticker not in holdings_dict: holdings_dict[ticker] = {'shares': 0, 'avg_cost': 0.0}
@@ -103,6 +100,7 @@ class BackendAPI:
             
             try: current_price = yf.Ticker(ticker).fast_info.last_price
             except: current_price = avg_cost
+            if pd.isna(current_price): current_price = avg_cost
             
             book_val = shares * avg_cost
             market_val = shares * current_price
@@ -113,25 +111,24 @@ class BackendAPI:
             
             holdings_array.append({
                 "ticker": ticker,
-                "shares": shares,
-                "avg_cost": avg_cost,
-                "current_price": current_price,
-                "unreal_dlr": unreal_dlr
+                "shares": float(shares),
+                "avg_cost": float(avg_cost),
+                "current_price": float(current_price),
+                "unreal_dlr": float(unreal_dlr)
             })
 
         total_account_value = total_market_value + total_cash
         unreal_total_dlr = total_market_value - total_book_value
         unreal_total_pct = (unreal_total_dlr / total_book_value * 100) if total_book_value > 0 else 0
 
-        # --- TRUE DAILY LEDGER (CASH + EQUITY) ---
         chart_dates = []
         chart_values = []
+        holdings_charts = {}
         
         if raw_trades and first_trade_query and first_trade_query[0]:
             first_trade_date = datetime.datetime.strptime(first_trade_query[0], "%Y-%m-%d %H:%M:%S")
             now = datetime.datetime.now()
             
-            # Timeframe clamping
             if timeframe == "1M": requested_start = now - datetime.timedelta(days=30)
             elif timeframe == "1Y": requested_start = now - datetime.timedelta(days=365)
             else: requested_start = first_trade_date
@@ -143,14 +140,12 @@ class BackendAPI:
             trades_df = pd.DataFrame(raw_trades, columns=['ticker', 'type', 'shares', 'price', 'date'])
             trades_df['date'] = pd.to_datetime(trades_df['date']).dt.tz_localize(None).dt.floor('D')
 
-            # Calculate changes in shares
             def get_share_change(row):
                 if row['type'] == 'Buy': return row['shares']
                 elif row['type'] == 'Sell': return -row['shares']
                 return 0
             trades_df['share_change'] = trades_df.apply(get_share_change, axis=1)
 
-            # Calculate changes in cash balances
             def get_cash_change(row):
                 if row['type'] == 'Buy': return -(row['shares'] * row['price'])
                 elif row['type'] == 'Sell': return (row['shares'] * row['price'])
@@ -159,7 +154,6 @@ class BackendAPI:
                 return 0
             trades_df['cash_change'] = trades_df.apply(get_cash_change, axis=1)
 
-            # Build full timeline from first ever action to today
             full_date_range = pd.date_range(start=trades_df['date'].min(), end=now.floor('D'))
             daily_cash_changes = trades_df.groupby('date')['cash_change'].sum()
             daily_cash_balances = daily_cash_changes.reindex(full_date_range, fill_value=0).cumsum()
@@ -183,81 +177,105 @@ class BackendAPI:
                     daily_balances = daily_changes.reindex(full_date_range, fill_value=0).cumsum()
                     market_dates = hist_prices.index
                     
-                    # Align share balances and cash balances to the days the market was actually open
-                    daily_balances_aligned = daily_balances.reindex(market_dates).ffill()
-                    daily_cash_aligned = daily_cash_balances.reindex(market_dates).ffill()
+                    daily_balances_aligned = daily_balances.reindex(market_dates).ffill().fillna(0)
+                    daily_cash_aligned = daily_cash_balances.reindex(market_dates).ffill().fillna(0)
+                    hist_prices = hist_prices.ffill().bfill().fillna(0)
                     
                     common_tickers = list(set(daily_balances_aligned.columns) & set(hist_prices.columns))
                     daily_equity = (daily_balances_aligned[common_tickers] * hist_prices[common_tickers]).sum(axis=1)
                     
-                    # Total Account = Market Equity + Cash
                     daily_total_account = daily_equity + daily_cash_aligned
                     daily_total_account = daily_total_account.loc[daily_total_account.index >= actual_start_date]
                     
                     chart_dates = [d.strftime('%b %d, %Y') for d in daily_total_account.index]
                     chart_values = daily_total_account.values.tolist()
+                    
+                    # Generate individual holding charts for the carousel
+                    for ticker in active_tickers:
+                        if ticker in common_tickers:
+                            t_equity = daily_balances_aligned[ticker] * hist_prices[ticker]
+                            t_equity = t_equity.loc[t_equity.index >= actual_start_date]
+                            holdings_charts[ticker] = {
+                                "dates": [d.strftime('%b %d, %Y') for d in t_equity.index],
+                                "values": [0 if pd.isna(v) else float(v) for v in t_equity.values]
+                            }
                 else:
-                    # Fallback if Yahoo Finance is down
                     daily_cash_limited = daily_cash_balances.loc[daily_cash_balances.index >= actual_start_date]
                     chart_dates = [d.strftime('%b %d, %Y') for d in daily_cash_limited.index]
                     chart_values = daily_cash_limited.values.tolist()
             else:
-                # If they only have cash deposited and no stock trades yet
                 daily_cash_limited = daily_cash_balances.loc[daily_cash_balances.index >= actual_start_date]
                 chart_dates = [d.strftime('%b %d, %Y') for d in daily_cash_limited.index]
                 chart_values = daily_cash_limited.values.tolist()
 
-        history_array = [{"date": d, "type": t, "ticker": tick, "shares": s, "price": p} for tick, t, s, p, d in reversed(raw_trades)]
+        # Sanitize NaN out of outputs to prevent JS crashes
+        chart_values = [0 if pd.isna(x) else float(x) for x in chart_values]
+        history_array = [{"date": d, "type": t, "ticker": tick, "shares": float(s), "price": float(p)} for tick, t, s, p, d in reversed(raw_trades)]
 
         return {
-            "total_account": total_account_value,
-            "total_cash": total_cash,
-            "total_market": total_market_value,
-            "unreal_dlr": unreal_total_dlr,
-            "unreal_pct": unreal_total_pct,
-            "realized_gl": realized_gl,
+            "total_account": float(total_account_value),
+            "total_cash": float(total_cash),
+            "total_market": float(total_market_value),
+            "unreal_dlr": float(unreal_total_dlr),
+            "unreal_pct": float(unreal_total_pct),
+            "realized_gl": float(realized_gl),
             "holdings": holdings_array,
             "history": history_array,
             "chart_dates": chart_dates,
-            "chart_values": chart_values
+            "chart_values": chart_values,
+            "holdings_charts": holdings_charts
         }
 
-    def export_db(self):
+    def export_csv(self):
         if self.window:
-            dest_path = self.window.create_file_dialog(webview.SAVE_DIALOG, directory='', save_filename='ZenTradeBackup.db')
-            if dest_path: shutil.copy2(DB_PATH, dest_path[0])
+            dest_path = self.window.create_file_dialog(webview.SAVE_DIALOG, directory='', save_filename='ZenTrades.csv')
+            if dest_path:
+                conn = sqlite3.connect(DB_PATH)
+                trades = conn.execute("SELECT portfolios.name, ticker, type, shares, price, date FROM trades JOIN portfolios ON trades.portfolio_id = portfolios.id").fetchall()
+                conn.close()
+                with open(dest_path[0], 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(['Portfolio', 'Ticker', 'Type', 'Shares', 'Price', 'Date'])
+                    writer.writerows(trades)
+                self.window.evaluate_js('alert("CSV Exported Successfully!")')
 
-    def import_db(self):
+    def import_csv(self):
         if self.window:
-            src_path = self.window.create_file_dialog(webview.OPEN_DIALOG)
+            src_path = self.window.create_file_dialog(webview.OPEN_DIALOG, file_types=('CSV Files (*.csv)',))
             if src_path:
-                shutil.copy2(src_path[0], DB_PATH)
-                self.window.evaluate_js('loadPortfolios()')
+                try:
+                    df = pd.read_csv(src_path[0])
+                    conn = sqlite3.connect(DB_PATH)
+                    conn.execute("DELETE FROM trades")
+                    conn.execute("DELETE FROM portfolios")
+                    
+                    portfolios = df['Portfolio'].unique()
+                    for p in portfolios:
+                        conn.execute("INSERT INTO portfolios (name) VALUES (?)", (p,))
+                    
+                    for index, row in df.iterrows():
+                        pid = conn.execute("SELECT id FROM portfolios WHERE name=?", (row['Portfolio'],)).fetchone()[0]
+                        conn.execute("INSERT INTO trades (portfolio_id, ticker, type, shares, price, date) VALUES (?, ?, ?, ?, ?, ?)",
+                                     (pid, row['Ticker'], row['Type'], row['Shares'], row['Price'], row['Date']))
+                    conn.commit()
+                    conn.close()
+                    self.window.evaluate_js('loadPortfolios(); alert("CSV Imported Successfully!");')
+                except Exception as e:
+                    self.window.evaluate_js(f'alert("Import Error: Make sure headers are Portfolio, Ticker, Type, Shares, Price, Date");')
 
 def get_entrypoint():
-    if hasattr(sys, '_MEIPASS'):
-        return os.path.join(sys._MEIPASS, 'gui', 'index.html')
+    if hasattr(sys, '_MEIPASS'): return os.path.join(sys._MEIPASS, 'gui', 'index.html')
     return os.path.join(os.path.dirname(__file__), 'gui', 'index.html')
 
 if __name__ == '__main__':
     init_db()
-    
-    try:
-        import pyi_splash
-        pyi_splash.close()
-    except ImportError:
-        pass
+    try: import pyi_splash; pyi_splash.close()
+    except ImportError: pass
 
     api = BackendAPI()
-
     window = webview.create_window(
-        'Zen Trade Tracker - v1.0.0', 
-        url=get_entrypoint(),
-        js_api=api,
-        width=1200, height=850, 
-        background_color='#000000',
-        resizable=True
+        'Zen Trade Tracker - v1.0.0', url=get_entrypoint(), js_api=api,
+        width=1350, height=850, background_color='#050505', resizable=True
     )
-    
     api.window = window
     webview.start()
