@@ -45,7 +45,16 @@ button { flex: 1; padding: 10px; border: none; border-radius: 6px; font-weight: 
 .card h3 { font-size: 2rem; margin-top: 10px; }
 
 .glass-panel { background: rgba(18, 18, 18, 0.7); backdrop-filter: blur(10px); border: 1px solid #222; border-radius: 12px; padding: 20px; }
-.chart-container { height: 300px; }
+
+/* Dynamic Chart UI */
+.chart-container { height: 350px; display: flex; flex-direction: column; }
+.chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.chart-header h3 { color: var(--text-muted); font-size: 1rem; text-transform: uppercase; }
+.chart-filters { display: flex; gap: 5px; background: #0a0a0a; padding: 4px; border-radius: 6px; border: 1px solid #333; }
+.tf-btn { background: transparent; color: var(--text-muted); padding: 5px 15px; font-size: 0.85rem; border-radius: 4px; transition: 0.2s; }
+.tf-btn:hover { color: var(--text-main); }
+.tf-btn.active { background: var(--panel-light); color: var(--nvidia-green); font-weight: bold; }
+.canvas-wrapper { flex: 1; position: relative; }
 
 .tables-container { display: flex; gap: 20px; flex: 1; min-height: 300px; }
 .table-wrapper { flex: 1; overflow-y: auto; }
@@ -59,7 +68,6 @@ tbody tr:hover { background-color: rgba(118, 185, 0, 0.05); }
 .positive { color: var(--nvidia-green); font-weight: bold; }
 .negative { color: var(--danger); font-weight: bold; }
 
-/* Custom Scrollbar */
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-track { background: var(--bg-black); }
 ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
