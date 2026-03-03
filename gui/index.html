@@ -1,130 +1,207 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zen Trade Tracker</title>
-    <link rel="stylesheet" href="styles.css">
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>Zen Portfolios Dashboard</title>
+    
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'], },
+                    colors: {
+                        zen: {
+                            black: '#0f0f0f',
+                            dark: '#141414',
+                            card: '#1e1e1e',
+                            green: '#9FFF40',
+                            red: '#E63946',
+                            gray: '#888888',
+                            input: '#2c2c2c',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        body { background-color: #121212; color: white; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0f0f0f; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #444; }
+        
+        .table-row-hover:hover { background-color: rgba(255, 255, 255, 0.03); }
+        input::placeholder { color: #666 !important; opacity: 1; }
+        
+        /* Table Typography Tweaks */
+        table thead th { font-size: 0.75rem !important; text-transform: uppercase !important; color: #888 !important; }
+        table tbody td { font-size: 0.9rem !important; color: #eee; }
+    </style>
 </head>
-<body>
-    <div class="app-container">
-        <nav class="sidebar">
-            <div class="brand">
-                <h1 class="glow-text">ZEN</h1>
-                <p>PORTFOLIOS</p>
+<body class="flex h-screen overflow-hidden antialiased selection:bg-zen-green selection:text-black">
+    
+    <aside class="w-[280px] bg-zen-black flex flex-col h-full border-r border-white/5 flex-shrink-0 overflow-y-auto">
+        <div class="p-8 text-center">
+            <h1 class="text-5xl font-extrabold text-zen-green tracking-wide drop-shadow-[0_0_10px_rgba(159,255,64,0.3)]">ZEN</h1>
+            <p class="text-white text-[0.7rem] uppercase tracking-[0.3em] font-medium mt-0">PORTFOLIOS</p>
+        </div>
+        
+        <div class="px-6 flex flex-col gap-6">
+            <div>
+                <div class="relative">
+                    <select id="portfolio-select" onchange="changePortfolio()" class="w-full bg-zen-card text-white border border-white/10 rounded-lg px-4 py-2.5 text-sm appearance-none focus:ring-1 focus:ring-zen-green focus:outline-none"></select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-white">
+                        <i class="fas fa-chevron-down text-xs"></i>
+                    </div>
+                </div>
+                <div class="flex gap-3 mt-3">
+                    <button onclick="addPortfolio()" class="flex-1 bg-transparent border border-[#444] text-white/70 text-xs py-1.5 rounded hover:bg-white/5 transition">Add</button>
+                    <button onclick="editPortfolio()" class="flex-1 bg-transparent border border-[#444] text-white/70 text-xs py-1.5 rounded hover:bg-white/5 transition">Edit</button>
+                    <button onclick="deletePortfolio()" class="flex-1 bg-transparent border border-[#444] text-white/70 text-xs py-1.5 rounded hover:bg-zen-red hover:text-white transition">Del</button>
+                </div>
             </div>
             
-            <div class="portfolio-controls">
-                <select id="portfolio-select" onchange="changePortfolio()"></select>
-                <div class="btn-group">
-                    <button class="btn-outline" onclick="addPortfolio()">Add</button>
-                    <button class="btn-outline" onclick="editPortfolio()">Edit</button>
-                    <button class="btn-outline danger" onclick="deletePortfolio()">Del</button>
-                </div>
-            </div>
-
-            <div class="trade-controls">
-                <p class="section-title">LOG TRADE</p>
-                <input type="text" id="ticker-input" placeholder="TICKER (e.g., MJS.V)">
-                <input type="number" id="shares-input" placeholder="Shares">
-                <input type="number" id="price-input" placeholder="Price">
-                <div class="btn-group">
-                    <button class="btn-buy" onclick="submitTrade('Buy')">BUY</button>
-                    <button class="btn-sell" onclick="submitTrade('Sell')">SELL</button>
-                </div>
-            </div>
-
-            <div class="trade-controls" style="margin-top: 20px;">
-                <p class="section-title">MANAGE CASH</p>
-                <input type="number" id="cash-input" placeholder="Amount ($)">
-                <div class="btn-group">
-                    <button class="btn-outline" style="color: var(--nvidia-green); border-color: var(--nvidia-green);" onclick="submitCash('Deposit')">DEPOSIT</button>
-                    <button class="btn-outline" style="color: var(--danger); border-color: var(--danger);" onclick="submitCash('Withdraw')">WITHDRAW</button>
-                </div>
-            </div>
-        </nav>
-
-        <main class="dashboard">
-            <header class="top-bar">
-                <h2>Dashboard</h2>
-                <div class="window-controls">
-                    <button class="btn-outline" onclick="pywebview.api.import_csv()">Import CSV</button>
-                    <button class="btn-outline" onclick="pywebview.api.export_csv()">Export CSV</button>
-                    <button class="btn-glow" onclick="refreshData()">Refresh</button>
-                </div>
-            </header>
-
-            <div class="summary-cards">
-                <div class="card">
-                    <span class="card-title">Total Account</span>
-                    <h3 id="val-account">$0.00</h3>
-                </div>
-                <div class="card">
-                    <span class="card-title">Available Cash</span>
-                    <h3 id="val-cash">$0.00</h3>
-                </div>
-                <div class="card">
-                    <span class="card-title">Unrealized G/L</span>
-                    <h3 id="val-unreal">$0.00 (0.0%)</h3>
-                </div>
-                <div class="card">
-                    <span class="card-title">Realized G/L</span>
-                    <h3 id="val-real">$0.00</h3>
-                </div>
-            </div>
-
-            <div class="dual-chart-container">
-                <div class="chart-box glass-panel">
-                    <div class="chart-header">
-                        <h3>Portfolio Value</h3>
-                        <div class="chart-filters">
-                            <button class="tf-btn active" onclick="updateChartTimeframe('All Time')">All</button>
-                            <button class="tf-btn" onclick="updateChartTimeframe('1Y')">1Y</button>
-                            <button class="tf-btn" onclick="updateChartTimeframe('1M')">1M</button>
-                        </div>
+            <div>
+                <h3 class="text-white text-sm font-semibold mb-3 uppercase tracking-wider">Log Trade</h3>
+                <div class="space-y-3">
+                    <input id="ticker-input" class="w-full bg-zen-input border border-[#444] rounded-md px-4 py-2.5 text-sm text-white focus:border-zen-green focus:ring-0 focus:outline-none" placeholder="TICKER (e.g., BDIV.TO)" type="text"/>
+                    <div class="flex gap-3">
+                        <input id="shares-input" class="w-1/2 bg-zen-input border border-[#444] rounded-md px-4 py-2.5 text-sm text-white focus:border-zen-green focus:ring-0 focus:outline-none" placeholder="Shares" type="number"/>
+                        <input id="price-input" class="w-1/2 bg-zen-input border border-[#444] rounded-md px-4 py-2.5 text-sm text-white focus:border-zen-green focus:ring-0 focus:outline-none" placeholder="Price" type="number"/>
                     </div>
-                    <div class="canvas-wrapper">
-                        <canvas id="equityChart"></canvas>
-                    </div>
-                </div>
-
-                <div class="chart-box glass-panel" id="carousel-container">
-                    <div class="chart-header">
-                        <h3 id="carousel-title">Holdings Performance</h3>
-                        <div class="chart-filters">
-                            <button class="tf-btn" onclick="prevCarousel()">&#9664;</button>
-                            <button class="tf-btn" onclick="nextCarousel()">&#9654;</button>
-                        </div>
-                    </div>
-                    <div class="canvas-wrapper">
-                        <canvas id="carouselChart"></canvas>
+                    <div class="flex gap-3 pt-1">
+                        <button onclick="submitTrade('Buy')" class="flex-1 bg-zen-green text-black font-extrabold py-3 rounded-md text-sm hover:brightness-110 transition shadow-[0_0_10px_rgba(159,255,64,0.3)]">BUY</button>
+                        <button onclick="submitTrade('Sell')" class="flex-1 bg-zen-red text-white font-extrabold py-3 rounded-md text-sm hover:brightness-110 transition shadow-[0_0_10px_rgba(230,57,70,0.3)]">SELL</button>
                     </div>
                 </div>
             </div>
-
-            <div class="tables-container">
-                <div class="table-wrapper glass-panel">
-                    <h3>Current Holdings</h3>
-                    <table id="holdings-table">
-                        <thead>
-                            <tr><th>Ticker</th><th>Shares</th><th>Avg Cost</th><th>Mkt Price</th><th>Unrealized</th></tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-                <div class="table-wrapper glass-panel">
-                    <h3>Trade History</h3>
-                    <table id="history-table">
-                        <thead>
-                            <tr><th>Date</th><th>Type</th><th>Ticker</th><th>Shares</th><th>Price</th></tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
+            
+            <div class="h-px w-full bg-white/10"></div>
+            
+            <div class="pb-8">
+                <h3 class="text-white text-sm font-semibold mb-3 uppercase tracking-wider">Manage Cash</h3>
+                <div class="space-y-3">
+                    <input id="cash-input" class="w-full bg-zen-input border border-[#444] rounded-md px-4 py-2.5 text-sm text-white focus:border-zen-green focus:ring-0 focus:outline-none" placeholder="Amount ($)" type="number"/>
+                    <div class="flex gap-3 pt-1">
+                        <button onclick="submitCash('Deposit')" class="flex-1 bg-transparent border border-zen-green text-zen-green font-extrabold py-2.5 rounded-md text-sm hover:bg-zen-green hover:text-black transition">DEPOSIT</button>
+                        <button onclick="submitCash('Withdraw')" class="flex-1 bg-transparent border border-zen-red text-zen-red font-extrabold py-2.5 rounded-md text-sm hover:bg-zen-red hover:text-white transition">WITHDRAW</button>
+                    </div>
                 </div>
             </div>
-        </main>
-    </div>
+        </div>
+    </aside>
+    <main class="flex-1 flex flex-col h-full overflow-hidden bg-zen-dark">
+        <header class="h-20 px-8 flex items-center justify-between flex-shrink-0">
+            <h2 class="text-2xl font-medium text-white">Dashboard</h2>
+            <div class="flex gap-3">
+                <button onclick="pywebview.api.import_csv()" class="bg-zen-card border border-white/10 text-white/70 px-4 py-2 rounded text-sm hover:text-white hover:border-white/30 transition">Import CSV</button>
+                <button onclick="pywebview.api.export_csv()" class="bg-zen-card border border-white/10 text-white/70 px-4 py-2 rounded text-sm hover:text-white hover:border-white/30 transition">Export CSV</button>
+                <button onclick="refreshData()" class="bg-zen-green text-black font-bold px-4 py-2 rounded text-sm shadow-[0_0_10px_rgba(159,255,64,0.3)] hover:brightness-110 transition">Refresh</button>
+            </div>
+        </header>
+        
+        <div class="flex-1 overflow-y-auto p-[30px] pt-0">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                <div class="bg-zen-card rounded-xl p-6 border border-white/5 flex flex-col justify-between h-36 relative group hover:border-white/10 transition shadow-lg">
+                    <div class="flex justify-between items-start">
+                        <span class="text-[#888] text-[0.7rem] font-bold tracking-wider uppercase">Total Account</span>
+                        <i class="fas fa-briefcase text-white/10 text-xl absolute top-5 right-5"></i>
+                    </div>
+                    <div id="val-account" class="text-3xl font-semibold text-white tracking-tight">$0.00</div>
+                </div>
+                
+                <div class="bg-zen-card rounded-xl p-6 border border-white/5 flex flex-col justify-between h-36 relative group hover:border-white/10 transition shadow-lg">
+                    <div class="flex justify-between items-start">
+                        <span class="text-[#888] text-[0.7rem] font-bold tracking-wider uppercase">Available Cash</span>
+                        <i class="fas fa-wallet text-white/10 text-xl absolute top-5 right-5"></i>
+                    </div>
+                    <div id="val-cash" class="text-3xl font-semibold text-white tracking-tight">$0.00</div>
+                </div>
+                
+                <div class="bg-zen-card rounded-xl p-6 border border-white/5 flex flex-col justify-between h-36 relative group hover:border-white/10 transition shadow-lg">
+                    <div class="flex justify-between items-start">
+                        <span class="text-[#888] text-[0.7rem] font-bold tracking-wider uppercase">Unrealized G/L</span>
+                        <i class="fas fa-arrow-trend-up text-white/10 text-xl absolute top-5 right-5"></i>
+                    </div>
+                    <div id="val-unreal" class="text-3xl font-semibold tracking-tight">$0.00 (0.0%)</div>
+                </div>
+                
+                <div class="bg-zen-card rounded-xl p-6 border border-white/5 flex flex-col justify-between h-36 relative group hover:border-white/10 transition shadow-lg">
+                    <div class="flex justify-between items-start">
+                        <span class="text-[#888] text-[0.7rem] font-bold tracking-wider uppercase">Realized G/L</span>
+                        <i class="fas fa-money-bill-wave text-white/10 text-xl absolute top-5 right-5"></i>
+                    </div>
+                    <div id="val-real" class="text-3xl font-semibold tracking-tight">$0.00</div>
+                </div>
+            </div>
+            
+            <section class="bg-zen-card rounded-xl p-6 border border-white/5 mb-6 relative">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-white text-sm font-semibold uppercase tracking-wider">Portfolio Value</h3>
+                    <div class="bg-black/30 rounded-lg p-1 flex text-xs" id="tf-buttons">
+                        <button onclick="updateChartTimeframe('All Time', this)" class="tf-btn bg-white/10 text-white px-3 py-1 rounded shadow-sm transition">All Time</button>
+                        <button onclick="updateChartTimeframe('1Y', this)" class="tf-btn text-zen-gray px-3 py-1 hover:text-white transition">1Y</button>
+                        <button onclick="updateChartTimeframe('1M', this)" class="tf-btn text-zen-gray px-3 py-1 hover:text-white transition">1M</button>
+                    </div>
+                </div>
+                <div class="h-[300px] w-full relative">
+                    <canvas id="equityChart"></canvas>
+                </div>
+            </section>
+            
+            <div class="grid grid-cols-1 xl:grid-cols-2 gap-[20px]">
+                <section class="bg-zen-card rounded-xl border border-white/5 flex flex-col h-[350px]">
+                    <div class="p-5 flex justify-between items-center border-b border-white/5">
+                        <h3 class="text-white text-sm font-semibold uppercase tracking-wider">Current Holdings</h3>
+                        <i class="fas fa-list text-white/20"></i>
+                    </div>
+                    <div class="overflow-auto flex-1">
+                        <table class="w-full text-left text-sm whitespace-nowrap">
+                            <thead class="text-zen-gray font-medium text-xs sticky top-0 bg-zen-card z-10 border-b border-white/5">
+                                <tr>
+                                    <th class="px-5 py-3 text-left">Ticker</th>
+                                    <th class="px-5 py-3 text-right">Shares</th>
+                                    <th class="px-5 py-3 text-right">Avg Cost</th>
+                                    <th class="px-5 py-3 text-right">Mkt Price</th>
+                                    <th class="px-5 py-3 text-right">Unrealized</th>
+                                </tr>
+                            </thead>
+                            <tbody id="holdings-body" class="divide-y divide-white/5"></tbody>
+                        </table>
+                    </div>
+                </section>
+                
+                <section class="bg-zen-card rounded-xl border border-white/5 flex flex-col h-[350px]">
+                    <div class="p-5 flex justify-between items-center border-b border-white/5">
+                        <h3 class="text-white text-sm font-semibold uppercase tracking-wider">Trade History</h3>
+                        <i class="fas fa-clock-rotate-left text-white/20"></i>
+                    </div>
+                    <div class="overflow-auto flex-1">
+                        <table class="w-full text-left text-sm whitespace-nowrap">
+                            <thead class="text-zen-gray font-medium text-xs sticky top-0 bg-zen-card z-10 border-b border-white/5">
+                                <tr>
+                                    <th class="px-5 py-3 text-left">Date</th>
+                                    <th class="px-5 py-3 text-left">Type</th>
+                                    <th class="px-5 py-3 text-left">Ticker</th>
+                                    <th class="px-5 py-3 text-right">Shares</th>
+                                    <th class="px-5 py-3 text-right">Price</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-body" class="divide-y divide-white/5"></tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </main>
     <script src="app.js"></script>
 </body>
 </html>
