@@ -1,28 +1,21 @@
 let equityChart = null;
-let carouselChartInstance = null;
 let currentChartTF = 'All Time'; 
-
-// Carousel State
-let carouselTickers = [];
-let holdingsChartsData = {};
-let currentCarouselIndex = 0;
-let carouselInterval = null;
 
 window.addEventListener('pywebviewready', function() {
     loadPortfolios();
-    
-    // Pause Carousel on hover
-    const carouselEl = document.getElementById('carousel-container');
-    carouselEl.addEventListener('mouseenter', () => clearInterval(carouselInterval));
-    carouselEl.addEventListener('mouseleave', () => startCarousel());
 });
 
-function updateChartTimeframe(tf) {
+function updateChartTimeframe(tf, btnElement) {
     currentChartTF = tf;
+    
+    // Reset all buttons to inactive styling
     document.querySelectorAll('.tf-btn').forEach(btn => {
-        btn.classList.remove('active');
-        if(btn.innerText === tf || (tf === 'All Time' && btn.innerText === 'All')) btn.classList.add('active');
+        btn.className = 'tf-btn text-zen-gray px-3 py-1 hover:text-white transition';
     });
+    
+    // Set the clicked button to active styling
+    btnElement.className = 'tf-btn bg-white/10 text-white px-3 py-1 rounded shadow-sm transition';
+    
     refreshData();
 }
 
@@ -67,65 +60,54 @@ async function refreshData() {
 function updateDashboard(data) {
     if (!data) return;
 
-    document.getElementById('val-account').textContent = `$${data.total_account.toFixed(2)}`;
-    document.getElementById('val-cash').textContent = `$${data.total_cash.toFixed(2)}`;
+    document.getElementById('val-account').textContent = `$${data.total_account.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    document.getElementById('val-cash').textContent = `$${data.total_cash.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
     
     const unrealEl = document.getElementById('val-unreal');
-    unrealEl.textContent = `$${data.unreal_dlr.toFixed(2)} (${data.unreal_pct.toFixed(1)}%)`;
-    unrealEl.className = data.unreal_dlr >= 0 ? 'positive' : 'negative';
+    unrealEl.textContent = `${data.unreal_dlr >= 0 ? '+' : ''}$${data.unreal_dlr.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${data.unreal_pct >= 0 ? '+' : ''}${data.unreal_pct.toFixed(2)}%)`;
+    unrealEl.className = data.unreal_dlr >= 0 ? 'text-3xl font-semibold tracking-tight text-[#9FFF40]' : 'text-3xl font-semibold tracking-tight text-[#E63946]';
 
     const realEl = document.getElementById('val-real');
-    realEl.textContent = `$${data.realized_gl.toFixed(2)}`;
-    realEl.className = data.realized_gl >= 0 ? 'positive' : 'negative';
+    realEl.textContent = `${data.realized_gl >= 0 ? '+' : ''}$${data.realized_gl.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    realEl.className = data.realized_gl >= 0 ? 'text-3xl font-semibold tracking-tight text-[#9FFF40]' : 'text-3xl font-semibold tracking-tight text-[#E63946]';
 
-    const holdingsBody = document.querySelector('#holdings-table tbody');
+    const holdingsBody = document.getElementById('holdings-body');
     holdingsBody.innerHTML = '';
     data.holdings.forEach(h => {
         const tr = document.createElement('tr');
-        const colorClass = h.unreal_dlr >= 0 ? 'positive' : 'negative';
+        tr.className = 'table-row-hover transition-colors';
+        const colorClass = h.unreal_dlr >= 0 ? 'text-[#9FFF40]' : 'text-[#E63946]';
+        const prefix = h.unreal_dlr >= 0 ? '+' : '';
         tr.innerHTML = `
-            <td><strong>${h.ticker}</strong></td>
-            <td>${h.shares.toFixed(2)}</td>
-            <td>$${h.avg_cost.toFixed(2)}</td>
-            <td>$${h.current_price.toFixed(2)}</td>
-            <td class="${colorClass}">$${h.unreal_dlr.toFixed(2)}</td>
+            <td class="px-5 py-3 font-semibold text-white">${h.ticker}</td>
+            <td class="px-5 py-3 text-right">${h.shares.toLocaleString()}</td>
+            <td class="px-5 py-3 text-right">$${h.avg_cost.toFixed(2)}</td>
+            <td class="px-5 py-3 text-right">$${h.current_price.toFixed(2)}</td>
+            <td class="px-5 py-3 text-right font-medium ${colorClass}">${prefix}$${h.unreal_dlr.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
         `;
         holdingsBody.appendChild(tr);
     });
 
-    const historyBody = document.querySelector('#history-table tbody');
+    const historyBody = document.getElementById('history-body');
     historyBody.innerHTML = '';
     data.history.forEach(h => {
         const tr = document.createElement('tr');
+        tr.className = 'table-row-hover transition-colors';
         let typeClass = '';
-        if (h.type === 'Buy' || h.type === 'Deposit') typeClass = 'positive';
-        else if (h.type === 'Sell' || h.type === 'Withdraw') typeClass = 'negative';
+        if (h.type === 'Buy' || h.type === 'Deposit') typeClass = 'text-[#9FFF40] font-medium';
+        else if (h.type === 'Sell' || h.type === 'Withdraw') typeClass = 'text-[#E63946] font-medium';
         
         tr.innerHTML = `
-            <td style="color: #888;">${h.date.split(' ')[0]}</td>
-            <td class="${typeClass}">${h.type}</td>
-            <td><strong>${h.ticker}</strong></td>
-            <td>${h.shares.toFixed(2)}</td>
-            <td>$${h.price.toFixed(2)}</td>
+            <td class="px-5 py-3 text-[#888]">${h.date.split(' ')[0]}</td>
+            <td class="px-5 py-3 ${typeClass}">${h.type}</td>
+            <td class="px-5 py-3 font-semibold text-white">${h.ticker === 'CASH' ? '-' : h.ticker}</td>
+            <td class="px-5 py-3 text-right">${h.ticker === 'CASH' ? '-' : h.shares.toLocaleString()}</td>
+            <td class="px-5 py-3 text-right">$${h.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
         `;
         historyBody.appendChild(tr);
     });
 
     drawMainChart(data.chart_dates, data.chart_values);
-    
-    // Setup Carousel
-    holdingsChartsData = data.holdings_charts;
-    carouselTickers = Object.keys(holdingsChartsData);
-    
-    if (carouselTickers.length > 0) {
-        currentCarouselIndex = 0;
-        renderCarousel();
-        startCarousel();
-    } else {
-        clearInterval(carouselInterval);
-        if(carouselChartInstance) carouselChartInstance.destroy();
-        document.getElementById('carousel-title').textContent = "No Holdings";
-    }
 }
 
 function drawMainChart(labels, dataPoints) {
@@ -134,9 +116,9 @@ function drawMainChart(labels, dataPoints) {
     if (!dataPoints || dataPoints.length === 0) return;
 
     const isPositive = dataPoints[dataPoints.length - 1] >= dataPoints[0];
-    const lineColor = isPositive ? '#76B900' : '#ff4747';
+    const lineColor = isPositive ? '#9FFF40' : '#E63946';
     const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-    gradient.addColorStop(0, isPositive ? 'rgba(118, 185, 0, 0.4)' : 'rgba(255, 71, 71, 0.4)');
+    gradient.addColorStop(0, isPositive ? 'rgba(159, 255, 64, 0.2)' : 'rgba(230, 57, 70, 0.2)');
     gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
 
     equityChart = new Chart(ctx, {
@@ -167,64 +149,6 @@ function drawMainChart(labels, dataPoints) {
     });
 }
 
-function startCarousel() {
-    clearInterval(carouselInterval);
-    if(carouselTickers.length > 1) {
-        carouselInterval = setInterval(nextCarousel, 5000);
-    }
-}
-
-function nextCarousel() {
-    if(carouselTickers.length === 0) return;
-    currentCarouselIndex = (currentCarouselIndex + 1) % carouselTickers.length;
-    renderCarousel();
-}
-
-function prevCarousel() {
-    if(carouselTickers.length === 0) return;
-    currentCarouselIndex = (currentCarouselIndex - 1 + carouselTickers.length) % carouselTickers.length;
-    renderCarousel();
-}
-
-function renderCarousel() {
-    const ticker = carouselTickers[currentCarouselIndex];
-    document.getElementById('carousel-title').textContent = `${ticker} Performance`;
-    
-    const cData = holdingsChartsData[ticker];
-    const ctx = document.getElementById('carouselChart').getContext('2d');
-    if (carouselChartInstance) carouselChartInstance.destroy();
-
-    const isPositive = cData.values[cData.values.length - 1] >= cData.values[0];
-    const lineColor = isPositive ? '#76B900' : '#ff4747';
-    
-    carouselChartInstance = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: cData.dates,
-            datasets: [{
-                data: cData.values,
-                borderColor: lineColor,
-                borderWidth: 2,
-                fill: false,
-                pointRadius: 0,
-                pointHoverRadius: 4,
-                tension: 0.3
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: { intersect: false, mode: 'index' },
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { grid: { display: false }, ticks: { display: false } },
-                y: { grid: { color: '#222' }, ticks: { color: '#666' } }
-            }
-        }
-    });
-}
-
-// Button actions mapped to Python backend
 async function addPortfolio() {
     const name = prompt("Enter new portfolio name:");
     if (name) { await pywebview.api.add_portfolio(name); loadPortfolios(); }
