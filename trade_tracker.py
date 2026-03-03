@@ -123,7 +123,6 @@ class BackendAPI:
 
         chart_dates = []
         chart_values = []
-        holdings_charts = {}
         
         if raw_trades and first_trade_query and first_trade_query[0]:
             first_trade_date = datetime.datetime.strptime(first_trade_query[0], "%Y-%m-%d %H:%M:%S")
@@ -154,7 +153,6 @@ class BackendAPI:
                 return 0
             trades_df['cash_change'] = trades_df.apply(get_cash_change, axis=1)
 
-            # BUG FIX: Use pd.Timestamp instead of python datetime for the .floor() command!
             full_date_range = pd.date_range(start=trades_df['date'].min(), end=pd.Timestamp(now).floor('D'))
             daily_cash_changes = trades_df.groupby('date')['cash_change'].sum()
             daily_cash_balances = daily_cash_changes.reindex(full_date_range, fill_value=0).cumsum()
@@ -192,15 +190,6 @@ class BackendAPI:
                     
                     chart_dates = [d.strftime('%b %d, %Y') for d in daily_total_account.index]
                     chart_values = daily_total_account.values.tolist()
-                    
-                    for ticker in active_tickers:
-                        if ticker in common_tickers:
-                            t_equity = daily_balances_aligned[ticker] * hist_prices[ticker]
-                            t_equity = t_equity.loc[t_equity.index >= actual_start_date]
-                            holdings_charts[ticker] = {
-                                "dates": [d.strftime('%b %d, %Y') for d in t_equity.index],
-                                "values": [0 if pd.isna(v) else float(v) for v in t_equity.values]
-                            }
                 else:
                     daily_cash_limited = daily_cash_balances.loc[daily_cash_balances.index >= actual_start_date]
                     chart_dates = [d.strftime('%b %d, %Y') for d in daily_cash_limited.index]
@@ -223,8 +212,7 @@ class BackendAPI:
             "holdings": holdings_array,
             "history": history_array,
             "chart_dates": chart_dates,
-            "chart_values": chart_values,
-            "holdings_charts": holdings_charts
+            "chart_values": chart_values
         }
 
     def export_csv(self):
@@ -276,9 +264,7 @@ if __name__ == '__main__':
     api = BackendAPI()
     window = webview.create_window(
         'Zen Trade Tracker - v1.0.0', url=get_entrypoint(), js_api=api,
-        width=1350, height=850, background_color='#050505', resizable=True
+        width=1350, height=850, background_color='#121212', resizable=True
     )
     api.window = window
-    
-    # DEBUG MODE ENABLED - Right Click > Inspect Element is now available!
     webview.start(debug=True)
