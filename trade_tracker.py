@@ -23,7 +23,7 @@ def init_db():
 
 class BackendAPI:
     def __init__(self):
-        self.window = None # Will be set right after window creation
+        self.window = None
 
     def get_portfolios(self):
         conn = sqlite3.connect(DB_PATH)
@@ -57,9 +57,12 @@ class BackendAPI:
                      (pid, ticker, type, shares, price, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         conn.commit(); conn.close()
 
-    def get_dashboard_data(self, pid):
+    def get_dashboard_data(self, pid, timeframe="All Time"):
         conn = sqlite3.connect(DB_PATH)
         raw_trades = conn.execute("SELECT ticker, type, shares, price, date FROM trades WHERE portfolio_id=? ORDER BY date ASC", (pid,)).fetchall()
+        
+        # Grab the date of the very first trade to use as the "All Time" starting point
+        first_trade_query = conn.execute("SELECT MIN(date) FROM trades WHERE portfolio_id=?", (pid,)).fetchone()
         conn.close()
 
         holdings_dict = {}
@@ -93,7 +96,7 @@ class BackendAPI:
             avg_cost = data['avg_cost']
             
             try: current_price = yf.Ticker(ticker).fast_info.last_price
-            except: current_price = avg_cost # Fallback
+            except: current_price = avg_cost
             
             book_val = shares * avg_cost
             market_val = shares * current_price
@@ -113,20 +116,41 @@ class BackendAPI:
         unreal_total_dlr = total_market_value - total_book_value
         unreal_total_pct = (unreal_total_dlr / total_book_value * 100) if total_book_value > 0 else 0
 
-        # Chart Data (3 Months)
+        # --- Dynamic Chart Timeframe Logic ---
         chart_dates = []
         chart_values = []
-        if active_tickers:
+        if active_tickers and first_trade_query and first_trade_query[0]:
+            first_trade_date = datetime.datetime.strptime(first_trade_query[0], "%Y-%m-%d %H:%M:%S")
+            now = datetime.datetime.now()
+            
+            if timeframe == "1M":
+                start_date = now - datetime.timedelta(days=30)
+            elif timeframe == "1Y":
+                start_date = now - datetime.timedelta(days=365)
+            else:
+                # All Time - Starts from your first trade!
+                start_date = first_trade_date
+                
+            # Failsafe: Ensure start_date is at least slightly in the past so yfinance doesn't error
+            if (now - start_date).days < 1:
+                start_date = now - datetime.timedelta(days=2)
+                
+            start_str = start_date.strftime("%Y-%m-%d")
+
             hist_data = pd.DataFrame()
             for ticker in active_tickers:
                 try:
-                    df = yf.Ticker(ticker).history(period="3mo")
-                    if not df.empty: hist_data[ticker] = df['Close'] * holdings_dict[ticker]['shares']
+                    df = yf.Ticker(ticker).history(start=start_str)
+                    if not df.empty: 
+                        # Clean timestamps to prevent timezone errors during pandas concatenation
+                        df.index = df.index.tz_localize(None) 
+                        hist_data[ticker] = df['Close'] * holdings_dict[ticker]['shares']
                 except: pass
+                
             if not hist_data.empty:
                 hist_data = hist_data.ffill().bfill()
                 daily_totals = hist_data.sum(axis=1)
-                chart_dates = [d.strftime('%b %d') for d in daily_totals.index]
+                chart_dates = [d.strftime('%b %d, %Y') for d in daily_totals.index]
                 chart_values = daily_totals.values.tolist()
 
         history_array = [{"date": d, "type": t, "ticker": tick, "shares": s, "price": p} for tick, t, s, p, d in reversed(raw_trades)]
@@ -162,17 +186,14 @@ def get_entrypoint():
 if __name__ == '__main__':
     init_db()
     
-    # Close PyInstaller Splash if it exists
     try:
         import pyi_splash
         pyi_splash.close()
     except ImportError:
         pass
 
-    # 1. Instantiate the API class
     api = BackendAPI()
 
-    # 2. Bind the API directly to the window upon creation
     window = webview.create_window(
         'Zen Trade Tracker - v1.0.0', 
         url=get_entrypoint(),
@@ -182,7 +203,5 @@ if __name__ == '__main__':
         resizable=True
     )
     
-    # 3. Give the API access to the window so it can use file dialogs
     api.window = window
-    
     webview.start()
