@@ -39,10 +39,10 @@ button { flex: 1; padding: 10px; border: none; border-radius: 6px; font-weight: 
 .top-bar { display: flex; justify-content: space-between; align-items: center; }
 .window-controls { display: flex; gap: 10px; }
 
-.summary-cards { display: flex; gap: 20px; }
-.card { flex: 1; background: var(--panel-dark); padding: 25px; border-radius: 12px; border: 1px solid #222; }
-.card-title { color: var(--text-muted); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
-.card h3 { font-size: 2rem; margin-top: 10px; }
+.summary-cards { display: flex; gap: 15px; }
+.card { flex: 1; background: var(--panel-dark); padding: 20px; border-radius: 12px; border: 1px solid #222; }
+.card-title { color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; }
+.card h3 { font-size: 1.7rem; margin-top: 10px; }
 
 .glass-panel { background: rgba(18, 18, 18, 0.7); backdrop-filter: blur(10px); border: 1px solid #222; border-radius: 12px; padding: 20px; }
 
