@@ -1,9 +1,19 @@
 let equityChart = null;
+let currentChartTF = 'All Time'; // Default Chart Timeframe
 
-// Wait for PyWebView to inject its API
 window.addEventListener('pywebviewready', function() {
     loadPortfolios();
 });
+
+function updateChartTimeframe(tf) {
+    currentChartTF = tf;
+    // Update active button styles
+    document.querySelectorAll('.tf-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if(btn.innerText === tf) btn.classList.add('active');
+    });
+    refreshData();
+}
 
 async function loadPortfolios() {
     const portfolios = await pywebview.api.get_portfolios();
@@ -33,17 +43,16 @@ async function refreshData() {
     const id = document.getElementById('portfolio-select').value;
     if (!id || id === "No Portfolios") return;
     
-    // Dim UI while loading
     document.getElementById('val-market').textContent = "Loading...";
     
-    const data = await pywebview.api.get_dashboard_data(id);
+    // Pass both the Portfolio ID and the requested chart timeframe
+    const data = await pywebview.api.get_dashboard_data(id, currentChartTF);
     updateDashboard(data);
 }
 
 function updateDashboard(data) {
     if (!data) return;
 
-    // Update Cards
     document.getElementById('val-market').textContent = `$${data.total_market.toFixed(2)}`;
     
     const unrealEl = document.getElementById('val-unreal');
@@ -54,7 +63,6 @@ function updateDashboard(data) {
     realEl.textContent = `$${data.realized_gl.toFixed(2)}`;
     realEl.className = data.realized_gl >= 0 ? 'positive' : 'negative';
 
-    // Update Holdings Table
     const holdingsBody = document.querySelector('#holdings-table tbody');
     holdingsBody.innerHTML = '';
     data.holdings.forEach(h => {
@@ -70,7 +78,6 @@ function updateDashboard(data) {
         holdingsBody.appendChild(tr);
     });
 
-    // Update History Table
     const historyBody = document.querySelector('#history-table tbody');
     historyBody.innerHTML = '';
     data.history.forEach(h => {
@@ -86,7 +93,6 @@ function updateDashboard(data) {
         historyBody.appendChild(tr);
     });
 
-    // Draw Chart.js
     drawChart(data.chart_dates, data.chart_values);
 }
 
@@ -134,7 +140,6 @@ function drawChart(labels, dataPoints) {
     });
 }
 
-// Button actions mapped to Python backend
 async function addPortfolio() {
     const name = prompt("Enter new portfolio name:");
     if (name) { await pywebview.api.add_portfolio(name); loadPortfolios(); }
