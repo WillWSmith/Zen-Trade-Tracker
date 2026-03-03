@@ -1,0 +1,66 @@
+:root {
+    --bg-black: #050505;
+    --panel-dark: #121212;
+    --panel-light: #1e1e1e;
+    --nvidia-green: #76B900;
+    --nvidia-green-glow: #8ce00088;
+    --text-main: #ffffff;
+    --text-muted: #888888;
+    --danger: #ff4747;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+body { background-color: var(--bg-black); color: var(--text-main); overflow: hidden; }
+
+.app-container { display: flex; height: 100vh; }
+
+/* Sidebar */
+.sidebar { width: 260px; background-color: var(--panel-dark); padding: 30px 20px; display: flex; flex-direction: column; gap: 30px; border-right: 1px solid #222; }
+.brand h1 { color: var(--nvidia-green); font-size: 2.5rem; letter-spacing: 2px; text-shadow: 0 0 10px var(--nvidia-green-glow); }
+.brand p { color: var(--text-muted); font-size: 0.8rem; letter-spacing: 1px; }
+
+input, select { width: 100%; padding: 12px; margin-bottom: 10px; background: var(--panel-light); border: 1px solid #333; color: white; border-radius: 6px; outline: none; transition: 0.3s; }
+input:focus, select:focus { border-color: var(--nvidia-green); box-shadow: 0 0 8px var(--nvidia-green-glow); }
+
+.btn-group { display: flex; gap: 8px; }
+button { flex: 1; padding: 10px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; transition: all 0.2s ease; }
+.btn-outline { background: var(--panel-light); color: var(--text-main); border: 1px solid #333; }
+.btn-outline:hover { background: #2a2a2a; }
+.btn-outline.danger:hover { background: #3a1c1c; color: var(--danger); border-color: var(--danger); }
+.btn-buy { background: var(--nvidia-green); color: black; }
+.btn-buy:hover { box-shadow: 0 0 15px var(--nvidia-green-glow); transform: translateY(-1px); }
+.btn-sell { background: var(--danger); color: white; }
+.btn-sell:hover { box-shadow: 0 0 15px #ff474788; transform: translateY(-1px); }
+.btn-glow { background: var(--nvidia-green); color: black; padding: 10px 20px; }
+.btn-glow:hover { box-shadow: 0 0 15px var(--nvidia-green-glow); }
+
+/* Dashboard */
+.dashboard { flex: 1; padding: 30px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
+.top-bar { display: flex; justify-content: space-between; align-items: center; }
+.window-controls { display: flex; gap: 10px; }
+
+.summary-cards { display: flex; gap: 20px; }
+.card { flex: 1; background: var(--panel-dark); padding: 25px; border-radius: 12px; border: 1px solid #222; }
+.card-title { color: var(--text-muted); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
+.card h3 { font-size: 2rem; margin-top: 10px; }
+
+.glass-panel { background: rgba(18, 18, 18, 0.7); backdrop-filter: blur(10px); border: 1px solid #222; border-radius: 12px; padding: 20px; }
+.chart-container { height: 300px; }
+
+.tables-container { display: flex; gap: 20px; flex: 1; min-height: 300px; }
+.table-wrapper { flex: 1; overflow-y: auto; }
+.table-wrapper h3 { color: var(--text-muted); margin-bottom: 15px; font-size: 1rem; text-transform: uppercase; }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 12px; border-bottom: 1px solid #222; }
+th { color: var(--text-muted); font-weight: normal; font-size: 0.9rem; }
+tbody tr:hover { background-color: rgba(118, 185, 0, 0.05); }
+
+.positive { color: var(--nvidia-green); font-weight: bold; }
+.negative { color: var(--danger); font-weight: bold; }
+
+/* Custom Scrollbar */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-black); }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--nvidia-green); }
