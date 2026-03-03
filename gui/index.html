@@ -26,7 +26,7 @@
 
             <div class="trade-controls">
                 <p class="section-title">LOG TRADE</p>
-                <input type="text" id="ticker-input" placeholder="TICKER (e.g., BDIV.TO)">
+                <input type="text" id="ticker-input" placeholder="TICKER (e.g., MJS.V)">
                 <input type="number" id="shares-input" placeholder="Shares">
                 <input type="number" id="price-input" placeholder="Price">
                 <div class="btn-group">
@@ -49,8 +49,8 @@
             <header class="top-bar">
                 <h2>Dashboard</h2>
                 <div class="window-controls">
-                    <button class="btn-outline" onclick="pywebview.api.import_db()">Import DB</button>
-                    <button class="btn-outline" onclick="pywebview.api.export_db()">Export DB</button>
+                    <button class="btn-outline" onclick="pywebview.api.import_csv()">Import CSV</button>
+                    <button class="btn-outline" onclick="pywebview.api.export_csv()">Export CSV</button>
                     <button class="btn-glow" onclick="refreshData()">Refresh</button>
                 </div>
             </header>
@@ -74,17 +74,32 @@
                 </div>
             </div>
 
-            <div class="chart-container glass-panel">
-                <div class="chart-header">
-                    <h3>Portfolio Value</h3>
-                    <div class="chart-filters">
-                        <button class="tf-btn active" onclick="updateChartTimeframe('All Time')">All Time</button>
-                        <button class="tf-btn" onclick="updateChartTimeframe('1Y')">1Y</button>
-                        <button class="tf-btn" onclick="updateChartTimeframe('1M')">1M</button>
+            <div class="dual-chart-container">
+                <div class="chart-box glass-panel">
+                    <div class="chart-header">
+                        <h3>Portfolio Value</h3>
+                        <div class="chart-filters">
+                            <button class="tf-btn active" onclick="updateChartTimeframe('All Time')">All</button>
+                            <button class="tf-btn" onclick="updateChartTimeframe('1Y')">1Y</button>
+                            <button class="tf-btn" onclick="updateChartTimeframe('1M')">1M</button>
+                        </div>
+                    </div>
+                    <div class="canvas-wrapper">
+                        <canvas id="equityChart"></canvas>
                     </div>
                 </div>
-                <div class="canvas-wrapper">
-                    <canvas id="equityChart"></canvas>
+
+                <div class="chart-box glass-panel" id="carousel-container">
+                    <div class="chart-header">
+                        <h3 id="carousel-title">Holdings Performance</h3>
+                        <div class="chart-filters">
+                            <button class="tf-btn" onclick="prevCarousel()">&#9664;</button>
+                            <button class="tf-btn" onclick="nextCarousel()">&#9654;</button>
+                        </div>
+                    </div>
+                    <div class="canvas-wrapper">
+                        <canvas id="carouselChart"></canvas>
+                    </div>
                 </div>
             </div>
 
