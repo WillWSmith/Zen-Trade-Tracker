@@ -1,5 +1,5 @@
 let equityChart = null;
-let currentChartTF = 'All Time'; // Default Chart Timeframe
+let currentChartTF = 'All Time'; 
 
 window.addEventListener('pywebviewready', function() {
     loadPortfolios();
@@ -7,7 +7,6 @@ window.addEventListener('pywebviewready', function() {
 
 function updateChartTimeframe(tf) {
     currentChartTF = tf;
-    // Update active button styles
     document.querySelectorAll('.tf-btn').forEach(btn => {
         btn.classList.remove('active');
         if(btn.innerText === tf) btn.classList.add('active');
@@ -43,9 +42,8 @@ async function refreshData() {
     const id = document.getElementById('portfolio-select').value;
     if (!id || id === "No Portfolios") return;
     
-    document.getElementById('val-market').textContent = "Loading...";
+    document.getElementById('val-account').textContent = "Loading...";
     
-    // Pass both the Portfolio ID and the requested chart timeframe
     const data = await pywebview.api.get_dashboard_data(id, currentChartTF);
     updateDashboard(data);
 }
@@ -53,7 +51,8 @@ async function refreshData() {
 function updateDashboard(data) {
     if (!data) return;
 
-    document.getElementById('val-market').textContent = `$${data.total_market.toFixed(2)}`;
+    document.getElementById('val-account').textContent = `$${data.total_account.toFixed(2)}`;
+    document.getElementById('val-cash').textContent = `$${data.total_cash.toFixed(2)}`;
     
     const unrealEl = document.getElementById('val-unreal');
     unrealEl.textContent = `$${data.unreal_dlr.toFixed(2)} (${data.unreal_pct.toFixed(1)}%)`;
@@ -82,7 +81,10 @@ function updateDashboard(data) {
     historyBody.innerHTML = '';
     data.history.forEach(h => {
         const tr = document.createElement('tr');
-        const typeClass = h.type === 'Buy' ? 'positive' : 'negative';
+        let typeClass = '';
+        if (h.type === 'Buy' || h.type === 'Deposit') typeClass = 'positive';
+        else if (h.type === 'Sell' || h.type === 'Withdraw') typeClass = 'negative';
+        
         tr.innerHTML = `
             <td style="color: #888;">${h.date.split(' ')[0]}</td>
             <td class="${typeClass}">${h.type}</td>
@@ -116,7 +118,7 @@ function drawChart(labels, dataPoints) {
         data: {
             labels: labels,
             datasets: [{
-                label: 'Portfolio Value',
+                label: 'Total Account Value',
                 data: dataPoints,
                 borderColor: lineColor,
                 backgroundColor: gradient,
@@ -168,5 +170,18 @@ async function submitTrade(type) {
     await pywebview.api.add_trade(id, ticker, type, shares, price);
     document.getElementById('shares-input').value = '';
     document.getElementById('price-input').value = '';
+    refreshData();
+}
+
+async function submitCash(type) {
+    const id = document.getElementById('portfolio-select').value;
+    const amount = parseFloat(document.getElementById('cash-input').value);
+    
+    if (isNaN(amount) || amount <= 0) {
+        alert("Please enter a valid cash amount."); return;
+    }
+    
+    await pywebview.api.add_trade(id, "CASH", type, amount, 1.0);
+    document.getElementById('cash-input').value = '';
     refreshData();
 }
