@@ -22,8 +22,8 @@ def init_db():
     conn.close()
 
 class BackendAPI:
-    def __init__(self, window):
-        self.window = window
+    def __init__(self):
+        self.window = None # Will be set right after window creation
 
     def get_portfolios(self):
         conn = sqlite3.connect(DB_PATH)
@@ -143,14 +143,16 @@ class BackendAPI:
         }
 
     def export_db(self):
-        dest_path = self.window.create_file_dialog(webview.SAVE_DIALOG, directory='', save_filename='ZenTradeBackup.db')
-        if dest_path: shutil.copy2(DB_PATH, dest_path[0])
+        if self.window:
+            dest_path = self.window.create_file_dialog(webview.SAVE_DIALOG, directory='', save_filename='ZenTradeBackup.db')
+            if dest_path: shutil.copy2(DB_PATH, dest_path[0])
 
     def import_db(self):
-        src_path = self.window.create_file_dialog(webview.OPEN_DIALOG)
-        if src_path:
-            shutil.copy2(src_path[0], DB_PATH)
-            self.window.evaluate_js('loadPortfolios()')
+        if self.window:
+            src_path = self.window.create_file_dialog(webview.OPEN_DIALOG)
+            if src_path:
+                shutil.copy2(src_path[0], DB_PATH)
+                self.window.evaluate_js('loadPortfolios()')
 
 def get_entrypoint():
     if hasattr(sys, '_MEIPASS'):
@@ -167,15 +169,20 @@ if __name__ == '__main__':
     except ImportError:
         pass
 
+    # 1. Instantiate the API class
+    api = BackendAPI()
+
+    # 2. Bind the API directly to the window upon creation
     window = webview.create_window(
         'Zen Trade Tracker - v1.0.0', 
         url=get_entrypoint(),
+        js_api=api,
         width=1200, height=850, 
         background_color='#000000',
         resizable=True
     )
     
-    api = BackendAPI(window)
-    window.expose(api)
+    # 3. Give the API access to the window so it can use file dialogs
+    api.window = window
     
     webview.start()
