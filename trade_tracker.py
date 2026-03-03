@@ -65,18 +65,25 @@ class BackendAPI:
 
         holdings_dict = {}
         realized_gl = 0.0
+        total_cash = 0.0
         
-        # Calculate current holdings and realized gains
+        # Calculate current holdings, cash balances, and realized gains
         for ticker, t_type, shares, price, date in raw_trades:
-            if ticker not in holdings_dict:
-                holdings_dict[ticker] = {'shares': 0, 'avg_cost': 0.0}
-            
-            h = holdings_dict[ticker]
-            if t_type == 'Buy':
+            if t_type == 'Deposit':
+                total_cash += shares
+            elif t_type == 'Withdraw':
+                total_cash -= shares
+            elif t_type == 'Buy':
+                total_cash -= (shares * price)
+                if ticker not in holdings_dict: holdings_dict[ticker] = {'shares': 0, 'avg_cost': 0.0}
+                h = holdings_dict[ticker]
                 total_cost = (h['shares'] * h['avg_cost']) + (shares * price)
                 h['shares'] += shares
                 h['avg_cost'] = total_cost / h['shares']
             elif t_type == 'Sell':
+                total_cash += (shares * price)
+                if ticker not in holdings_dict: holdings_dict[ticker] = {'shares': 0, 'avg_cost': 0.0}
+                h = holdings_dict[ticker]
                 realized_gl += (price - h['avg_cost']) * shares
                 h['shares'] -= shares
                 if h['shares'] <= 0:
@@ -112,10 +119,11 @@ class BackendAPI:
                 "unreal_dlr": unreal_dlr
             })
 
+        total_account_value = total_market_value + total_cash
         unreal_total_dlr = total_market_value - total_book_value
         unreal_total_pct = (unreal_total_dlr / total_book_value * 100) if total_book_value > 0 else 0
 
-        # --- TRUE DAILY LEDGER CHART MATH ---
+        # --- TRUE DAILY LEDGER (CASH + EQUITY) ---
         chart_dates = []
         chart_values = []
         
@@ -123,62 +131,87 @@ class BackendAPI:
             first_trade_date = datetime.datetime.strptime(first_trade_query[0], "%Y-%m-%d %H:%M:%S")
             now = datetime.datetime.now()
             
-            # Determine Requested Start Date
-            if timeframe == "1M":
-                requested_start = now - datetime.timedelta(days=30)
-            elif timeframe == "1Y":
-                requested_start = now - datetime.timedelta(days=365)
-            else:
-                requested_start = first_trade_date
+            # Timeframe clamping
+            if timeframe == "1M": requested_start = now - datetime.timedelta(days=30)
+            elif timeframe == "1Y": requested_start = now - datetime.timedelta(days=365)
+            else: requested_start = first_trade_date
                 
-            # CLAMP: Never show data from before the portfolio actually existed
             actual_start_date = max(requested_start, first_trade_date)
-            
-            if (now - actual_start_date).days < 1:
-                actual_start_date = now - datetime.timedelta(days=2)
-                
+            if (now - actual_start_date).days < 1: actual_start_date = now - datetime.timedelta(days=2)
             start_str = actual_start_date.strftime("%Y-%m-%d")
 
-            # 1. Build a timeline of all trades
-            all_tickers_ever_held = list(set([t[0] for t in raw_trades]))
             trades_df = pd.DataFrame(raw_trades, columns=['ticker', 'type', 'shares', 'price', 'date'])
             trades_df['date'] = pd.to_datetime(trades_df['date']).dt.tz_localize(None).dt.floor('D')
-            
-            # Modifier: Buys are positive, Sells are negative
-            trades_df['share_change'] = trades_df.apply(lambda row: row['shares'] if row['type'] == 'Buy' else -row['shares'], axis=1)
 
-            # Sum daily changes per ticker
-            daily_changes = trades_df.groupby(['date', 'ticker'])['share_change'].sum().unstack(fill_value=0)
+            # Calculate changes in shares
+            def get_share_change(row):
+                if row['type'] == 'Buy': return row['shares']
+                elif row['type'] == 'Sell': return -row['shares']
+                return 0
+            trades_df['share_change'] = trades_df.apply(get_share_change, axis=1)
+
+            # Calculate changes in cash balances
+            def get_cash_change(row):
+                if row['type'] == 'Buy': return -(row['shares'] * row['price'])
+                elif row['type'] == 'Sell': return (row['shares'] * row['price'])
+                elif row['type'] == 'Deposit': return row['shares']
+                elif row['type'] == 'Withdraw': return -row['shares']
+                return 0
+            trades_df['cash_change'] = trades_df.apply(get_cash_change, axis=1)
+
+            # Build full timeline from first ever action to today
+            full_date_range = pd.date_range(start=trades_df['date'].min(), end=now.floor('D'))
+            daily_cash_changes = trades_df.groupby('date')['cash_change'].sum()
+            daily_cash_balances = daily_cash_changes.reindex(full_date_range, fill_value=0).cumsum()
+
+            stock_trades = trades_df[trades_df['type'].isin(['Buy', 'Sell'])]
             
-            # 2. Fetch Historical Prices for ALL tickers ever traded
-            hist_prices = pd.DataFrame()
-            for ticker in all_tickers_ever_held:
-                try:
-                    df = yf.Ticker(ticker).history(start=start_str)
-                    if not df.empty: 
-                        df.index = df.index.tz_localize(None).floor('D') 
-                        hist_prices[ticker] = df['Close']
-                except: pass
+            if not stock_trades.empty:
+                daily_changes = stock_trades.groupby(['date', 'ticker'])['share_change'].sum().unstack(fill_value=0)
+                all_tickers = daily_changes.columns.tolist()
                 
-            if not hist_prices.empty and not daily_changes.empty:
-                # 3. Calculate true daily share balances from the very beginning of time
-                full_date_range = pd.date_range(start=daily_changes.index.min(), end=now.floor('D'))
-                daily_balances = daily_changes.reindex(full_date_range, fill_value=0).cumsum()
-                
-                # Align the share balances strictly to the market dates we pulled
-                market_dates = hist_prices.index
-                daily_balances_aligned = daily_balances.reindex(market_dates).ffill() # Forward fill any gaps
-                
-                # 4. Multiply accurate daily shares * actual daily prices
-                common_tickers = list(set(daily_balances_aligned.columns) & set(hist_prices.columns))
-                daily_equity = (daily_balances_aligned[common_tickers] * hist_prices[common_tickers]).sum(axis=1)
-                
-                chart_dates = [d.strftime('%b %d, %Y') for d in daily_equity.index]
-                chart_values = daily_equity.values.tolist()
+                hist_prices = pd.DataFrame()
+                for ticker in all_tickers:
+                    try:
+                        df = yf.Ticker(ticker).history(start=start_str)
+                        if not df.empty:
+                            df.index = df.index.tz_localize(None).floor('D')
+                            hist_prices[ticker] = df['Close']
+                    except: pass
+                    
+                if not hist_prices.empty:
+                    daily_balances = daily_changes.reindex(full_date_range, fill_value=0).cumsum()
+                    market_dates = hist_prices.index
+                    
+                    # Align share balances and cash balances to the days the market was actually open
+                    daily_balances_aligned = daily_balances.reindex(market_dates).ffill()
+                    daily_cash_aligned = daily_cash_balances.reindex(market_dates).ffill()
+                    
+                    common_tickers = list(set(daily_balances_aligned.columns) & set(hist_prices.columns))
+                    daily_equity = (daily_balances_aligned[common_tickers] * hist_prices[common_tickers]).sum(axis=1)
+                    
+                    # Total Account = Market Equity + Cash
+                    daily_total_account = daily_equity + daily_cash_aligned
+                    daily_total_account = daily_total_account.loc[daily_total_account.index >= actual_start_date]
+                    
+                    chart_dates = [d.strftime('%b %d, %Y') for d in daily_total_account.index]
+                    chart_values = daily_total_account.values.tolist()
+                else:
+                    # Fallback if Yahoo Finance is down
+                    daily_cash_limited = daily_cash_balances.loc[daily_cash_balances.index >= actual_start_date]
+                    chart_dates = [d.strftime('%b %d, %Y') for d in daily_cash_limited.index]
+                    chart_values = daily_cash_limited.values.tolist()
+            else:
+                # If they only have cash deposited and no stock trades yet
+                daily_cash_limited = daily_cash_balances.loc[daily_cash_balances.index >= actual_start_date]
+                chart_dates = [d.strftime('%b %d, %Y') for d in daily_cash_limited.index]
+                chart_values = daily_cash_limited.values.tolist()
 
         history_array = [{"date": d, "type": t, "ticker": tick, "shares": s, "price": p} for tick, t, s, p, d in reversed(raw_trades)]
 
         return {
+            "total_account": total_account_value,
+            "total_cash": total_cash,
             "total_market": total_market_value,
             "unreal_dlr": unreal_total_dlr,
             "unreal_pct": unreal_total_pct,
