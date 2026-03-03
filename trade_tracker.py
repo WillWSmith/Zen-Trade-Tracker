@@ -138,7 +138,6 @@ class BackendAPI:
             start_str = actual_start_date.strftime("%Y-%m-%d")
 
             trades_df = pd.DataFrame(raw_trades, columns=['ticker', 'type', 'shares', 'price', 'date'])
-            # BUG FIX: Safely parse to datetime without forcing a timezone strip
             trades_df['date'] = pd.to_datetime(trades_df['date']).dt.floor('D')
 
             def get_share_change(row):
@@ -155,7 +154,8 @@ class BackendAPI:
                 return 0
             trades_df['cash_change'] = trades_df.apply(get_cash_change, axis=1)
 
-            full_date_range = pd.date_range(start=trades_df['date'].min(), end=now.floor('D'))
+            # BUG FIX: Use pd.Timestamp instead of python datetime for the .floor() command!
+            full_date_range = pd.date_range(start=trades_df['date'].min(), end=pd.Timestamp(now).floor('D'))
             daily_cash_changes = trades_df.groupby('date')['cash_change'].sum()
             daily_cash_balances = daily_cash_changes.reindex(full_date_range, fill_value=0).cumsum()
 
@@ -170,7 +170,6 @@ class BackendAPI:
                     try:
                         df = yf.Ticker(ticker).history(start=start_str)
                         if not df.empty:
-                            # BUG FIX: Safely strip timezone only if it actually exists in the Yahoo data
                             if df.index.tz is not None:
                                 df.index = df.index.tz_localize(None)
                             df.index = df.index.floor('D')
@@ -280,4 +279,6 @@ if __name__ == '__main__':
         width=1350, height=850, background_color='#050505', resizable=True
     )
     api.window = window
-    webview.start()
+    
+    # DEBUG MODE ENABLED - Right Click > Inspect Element is now available!
+    webview.start(debug=True)
