@@ -1,15 +1,27 @@
 let equityChart = null;
+let carouselChartInstance = null;
 let currentChartTF = 'All Time'; 
+
+// Carousel State
+let carouselTickers = [];
+let holdingsChartsData = {};
+let currentCarouselIndex = 0;
+let carouselInterval = null;
 
 window.addEventListener('pywebviewready', function() {
     loadPortfolios();
+    
+    // Pause Carousel on hover
+    const carouselEl = document.getElementById('carousel-container');
+    carouselEl.addEventListener('mouseenter', () => clearInterval(carouselInterval));
+    carouselEl.addEventListener('mouseleave', () => startCarousel());
 });
 
 function updateChartTimeframe(tf) {
     currentChartTF = tf;
     document.querySelectorAll('.tf-btn').forEach(btn => {
         btn.classList.remove('active');
-        if(btn.innerText === tf) btn.classList.add('active');
+        if(btn.innerText === tf || (tf === 'All Time' && btn.innerText === 'All')) btn.classList.add('active');
     });
     refreshData();
 }
@@ -44,8 +56,12 @@ async function refreshData() {
     
     document.getElementById('val-account').textContent = "Loading...";
     
-    const data = await pywebview.api.get_dashboard_data(id, currentChartTF);
-    updateDashboard(data);
+    try {
+        const data = await pywebview.api.get_dashboard_data(id, currentChartTF);
+        updateDashboard(data);
+    } catch (e) {
+        console.error("Error loading data:", e);
+    }
 }
 
 function updateDashboard(data) {
@@ -95,16 +111,26 @@ function updateDashboard(data) {
         historyBody.appendChild(tr);
     });
 
-    drawChart(data.chart_dates, data.chart_values);
+    drawMainChart(data.chart_dates, data.chart_values);
+    
+    // Setup Carousel
+    holdingsChartsData = data.holdings_charts;
+    carouselTickers = Object.keys(holdingsChartsData);
+    
+    if (carouselTickers.length > 0) {
+        currentCarouselIndex = 0;
+        renderCarousel();
+        startCarousel();
+    } else {
+        clearInterval(carouselInterval);
+        if(carouselChartInstance) carouselChartInstance.destroy();
+        document.getElementById('carousel-title').textContent = "No Holdings";
+    }
 }
 
-function drawChart(labels, dataPoints) {
+function drawMainChart(labels, dataPoints) {
     const ctx = document.getElementById('equityChart').getContext('2d');
-    
-    if (equityChart) {
-        equityChart.destroy();
-    }
-
+    if (equityChart) equityChart.destroy();
     if (!dataPoints || dataPoints.length === 0) return;
 
     const isPositive = dataPoints[dataPoints.length - 1] >= dataPoints[0];
@@ -118,7 +144,6 @@ function drawChart(labels, dataPoints) {
         data: {
             labels: labels,
             datasets: [{
-                label: 'Total Account Value',
                 data: dataPoints,
                 borderColor: lineColor,
                 backgroundColor: gradient,
@@ -135,13 +160,71 @@ function drawChart(labels, dataPoints) {
             interaction: { intersect: false, mode: 'index' },
             plugins: { legend: { display: false } },
             scales: {
-                x: { grid: { display: false }, ticks: { color: '#666', maxTicksLimit: 8 } },
+                x: { grid: { display: false }, ticks: { color: '#666', maxTicksLimit: 6 } },
                 y: { grid: { color: '#222' }, ticks: { color: '#666' } }
             }
         }
     });
 }
 
+function startCarousel() {
+    clearInterval(carouselInterval);
+    if(carouselTickers.length > 1) {
+        carouselInterval = setInterval(nextCarousel, 5000);
+    }
+}
+
+function nextCarousel() {
+    if(carouselTickers.length === 0) return;
+    currentCarouselIndex = (currentCarouselIndex + 1) % carouselTickers.length;
+    renderCarousel();
+}
+
+function prevCarousel() {
+    if(carouselTickers.length === 0) return;
+    currentCarouselIndex = (currentCarouselIndex - 1 + carouselTickers.length) % carouselTickers.length;
+    renderCarousel();
+}
+
+function renderCarousel() {
+    const ticker = carouselTickers[currentCarouselIndex];
+    document.getElementById('carousel-title').textContent = `${ticker} Performance`;
+    
+    const cData = holdingsChartsData[ticker];
+    const ctx = document.getElementById('carouselChart').getContext('2d');
+    if (carouselChartInstance) carouselChartInstance.destroy();
+
+    const isPositive = cData.values[cData.values.length - 1] >= cData.values[0];
+    const lineColor = isPositive ? '#76B900' : '#ff4747';
+    
+    carouselChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: cData.dates,
+            datasets: [{
+                data: cData.values,
+                borderColor: lineColor,
+                borderWidth: 2,
+                fill: false,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+                tension: 0.3
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { intersect: false, mode: 'index' },
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { grid: { display: false }, ticks: { display: false } },
+                y: { grid: { color: '#222' }, ticks: { color: '#666' } }
+            }
+        }
+    });
+}
+
+// Button actions mapped to Python backend
 async function addPortfolio() {
     const name = prompt("Enter new portfolio name:");
     if (name) { await pywebview.api.add_portfolio(name); loadPortfolios(); }
