@@ -7,15 +7,10 @@ window.addEventListener('pywebviewready', function() {
 
 function updateChartTimeframe(tf, btnElement) {
     currentChartTF = tf;
-    
-    // Reset all buttons to inactive styling
     document.querySelectorAll('.tf-btn').forEach(btn => {
         btn.className = 'tf-btn text-zen-gray px-3 py-1 hover:text-white transition';
     });
-    
-    // Set the clicked button to active styling
     btnElement.className = 'tf-btn bg-white/10 text-white px-3 py-1 rounded shadow-sm transition';
-    
     refreshData();
 }
 
@@ -60,6 +55,18 @@ async function refreshData() {
 function updateDashboard(data) {
     if (!data) return;
 
+    // Update Auto-fill Tickers
+    const datalist = document.getElementById('ticker-suggestions');
+    if (datalist && data.unique_tickers) {
+        datalist.innerHTML = '';
+        data.unique_tickers.forEach(ticker => {
+            const opt = document.createElement('option');
+            opt.value = ticker;
+            datalist.appendChild(opt);
+        });
+    }
+
+    // Top Level Summary Cards
     document.getElementById('val-account').textContent = `$${data.total_account.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
     document.getElementById('val-cash').textContent = `$${data.total_cash.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
     
@@ -68,9 +75,10 @@ function updateDashboard(data) {
     unrealEl.className = data.unreal_dlr >= 0 ? 'text-3xl font-semibold tracking-tight text-[#9FFF40]' : 'text-3xl font-semibold tracking-tight text-[#E63946]';
 
     const realEl = document.getElementById('val-real');
-    realEl.textContent = `${data.realized_gl >= 0 ? '+' : ''}$${data.realized_gl.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    realEl.textContent = `${data.realized_gl >= 0 ? '+' : ''}$${data.realized_gl.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${data.realized_pct >= 0 ? '+' : ''}${data.realized_pct.toFixed(2)}%)`;
     realEl.className = data.realized_gl >= 0 ? 'text-3xl font-semibold tracking-tight text-[#9FFF40]' : 'text-3xl font-semibold tracking-tight text-[#E63946]';
 
+    // Current Holdings Table (Smart Decimals)
     const holdingsBody = document.getElementById('holdings-body');
     holdingsBody.innerHTML = '';
     data.holdings.forEach(h => {
@@ -80,14 +88,15 @@ function updateDashboard(data) {
         const prefix = h.unreal_dlr >= 0 ? '+' : '';
         tr.innerHTML = `
             <td class="px-5 py-3 font-semibold text-white">${h.ticker}</td>
-            <td class="px-5 py-3 text-right">${h.shares.toLocaleString()}</td>
-            <td class="px-5 py-3 text-right">$${h.avg_cost.toFixed(2)}</td>
-            <td class="px-5 py-3 text-right">$${h.current_price.toFixed(2)}</td>
+            <td class="px-5 py-3 text-right">${h.shares.toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
+            <td class="px-5 py-3 text-right">$${h.avg_cost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 4})}</td>
+            <td class="px-5 py-3 text-right">$${h.current_price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 4})}</td>
             <td class="px-5 py-3 text-right font-medium ${colorClass}">${prefix}$${h.unreal_dlr.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
         `;
         holdingsBody.appendChild(tr);
     });
 
+    // Trade History Table (Smart Cash Logging & Trade Realized G/L)
     const historyBody = document.getElementById('history-body');
     historyBody.innerHTML = '';
     data.history.forEach(h => {
@@ -97,12 +106,28 @@ function updateDashboard(data) {
         if (h.type === 'Buy' || h.type === 'Deposit') typeClass = 'text-[#9FFF40] font-medium';
         else if (h.type === 'Sell' || h.type === 'Withdraw') typeClass = 'text-[#E63946] font-medium';
         
+        let tickerDisplay = h.ticker;
+        let sharesDisplay = h.shares.toLocaleString('en-US', {maximumFractionDigits: 4});
+        let priceDisplay = `$${h.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 4})}`;
+        let glDisplay = '-';
+        let glColor = 'text-[#888]';
+
+        if (h.ticker === 'CASH') {
+            tickerDisplay = 'CASH';
+            sharesDisplay = '-';
+            priceDisplay = `$${h.shares.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        } else if (h.type === 'Sell' && h.trade_gl !== null) {
+            glDisplay = `${h.trade_gl >= 0 ? '+' : ''}$${h.trade_gl.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            glColor = h.trade_gl >= 0 ? 'text-[#9FFF40] font-medium' : 'text-[#E63946] font-medium';
+        }
+
         tr.innerHTML = `
             <td class="px-5 py-3 text-[#888]">${h.date.split(' ')[0]}</td>
             <td class="px-5 py-3 ${typeClass}">${h.type}</td>
-            <td class="px-5 py-3 font-semibold text-white">${h.ticker === 'CASH' ? '-' : h.ticker}</td>
-            <td class="px-5 py-3 text-right">${h.ticker === 'CASH' ? '-' : h.shares.toLocaleString()}</td>
-            <td class="px-5 py-3 text-right">$${h.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+            <td class="px-5 py-3 font-semibold text-white">${tickerDisplay}</td>
+            <td class="px-5 py-3 text-right">${sharesDisplay}</td>
+            <td class="px-5 py-3 text-right">${priceDisplay}</td>
+            <td class="px-5 py-3 text-right ${glColor}">${glDisplay}</td>
         `;
         historyBody.appendChild(tr);
     });
