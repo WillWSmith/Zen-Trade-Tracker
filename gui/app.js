@@ -15,7 +15,8 @@ function updateChartTimeframe(tf, btnElement) {
     document.querySelectorAll('.tf-btn').forEach(btn => {
         btn.className = 'tf-btn text-zen-gray px-4 py-1.5 hover:text-white transition';
     });
-    btnElement.className = 'tf-btn bg-white/20 text-white px-4 py-1.5 rounded shadow-sm transition';
+    // Lowered from bg-white/20 to bg-white/10 to match the new softer panels
+    btnElement.className = 'tf-btn bg-white/10 text-white px-4 py-1.5 rounded shadow-sm transition';
     refreshData();
 }
 
