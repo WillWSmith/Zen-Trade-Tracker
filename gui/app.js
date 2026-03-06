@@ -15,7 +15,7 @@ function updateChartTimeframe(tf, btnElement) {
     document.querySelectorAll('.tf-btn').forEach(btn => {
         btn.className = 'tf-btn text-zen-gray px-4 py-1.5 hover:text-white transition';
     });
-    btnElement.className = 'tf-btn bg-white/10 text-white px-4 py-1.5 rounded shadow-sm transition';
+    btnElement.className = 'tf-btn bg-white/20 text-white px-4 py-1.5 rounded shadow-sm transition';
     refreshData();
 }
 
@@ -88,17 +88,17 @@ function updateDashboard(data) {
     // Today's Return
     const todayEl = document.getElementById('val-today');
     todayEl.textContent = `${data.today_dlr >= 0 ? '+' : ''}$${data.today_dlr.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${data.today_pct >= 0 ? '+' : ''}${data.today_pct.toFixed(2)}%)`;
-    todayEl.className = data.today_dlr >= 0 ? 'text-3xl font-semibold tracking-tight tabular-nums text-[#10B981]' : 'text-3xl font-semibold tracking-tight tabular-nums text-[#EF4444]';
+    todayEl.className = data.today_dlr >= 0 ? 'text-3xl font-semibold tracking-tight tabular-nums text-[#22C55E]' : 'text-3xl font-semibold tracking-tight tabular-nums text-[#EF4444]';
 
     // Unrealized
     const unrealEl = document.getElementById('val-unreal');
     unrealEl.textContent = `${data.unreal_dlr >= 0 ? '+' : ''}$${data.unreal_dlr.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${data.unreal_pct >= 0 ? '+' : ''}${data.unreal_pct.toFixed(2)}%)`;
-    unrealEl.className = data.unreal_dlr >= 0 ? 'text-3xl font-semibold tracking-tight tabular-nums text-[#10B981]' : 'text-3xl font-semibold tracking-tight tabular-nums text-[#EF4444]';
+    unrealEl.className = data.unreal_dlr >= 0 ? 'text-3xl font-semibold tracking-tight tabular-nums text-[#22C55E]' : 'text-3xl font-semibold tracking-tight tabular-nums text-[#EF4444]';
 
     // Realized
     const realEl = document.getElementById('val-real');
     realEl.textContent = `${data.realized_gl >= 0 ? '+' : ''}$${data.realized_gl.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${data.realized_pct >= 0 ? '+' : ''}${data.realized_pct.toFixed(2)}%)`;
-    realEl.className = data.realized_gl >= 0 ? 'text-3xl font-semibold tracking-tight tabular-nums text-[#10B981]' : 'text-3xl font-semibold tracking-tight tabular-nums text-[#EF4444]';
+    realEl.className = data.realized_gl >= 0 ? 'text-3xl font-semibold tracking-tight tabular-nums text-[#22C55E]' : 'text-3xl font-semibold tracking-tight tabular-nums text-[#EF4444]';
 
     renderHoldings();
     renderHistory();
@@ -132,12 +132,11 @@ function renderHoldings() {
     sorted.forEach(h => {
         const tr = document.createElement('tr');
         tr.className = 'table-row-hover transition-colors';
-        const colorClass = h.unreal_dlr >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]';
+        const colorClass = h.unreal_dlr >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]';
         const prefix = h.unreal_dlr >= 0 ? '+' : '';
-        // FIX: Replaced px-3 with px-2 for a super tight fit
         tr.innerHTML = `
             <td class="px-2 py-3 font-semibold text-white">${h.ticker}</td>
-            <td class="px-2 py-3 text-right text-zen-green/80 bg-zen-green/5">${h.allocation.toFixed(1)}%</td>
+            <td class="px-2 py-3 text-right text-zen-green bg-zen-green/5">${h.allocation.toFixed(1)}%</td>
             <td class="px-2 py-3 text-right">${h.shares.toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
             <td class="px-2 py-3 text-right">$${h.avg_cost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 4})}</td>
             <td class="px-2 py-3 text-right">$${h.current_price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 4})}</td>
@@ -164,7 +163,7 @@ function renderHistory() {
         tr.className = 'table-row-hover transition-colors';
         
         let typeClass = '';
-        if (h.type === 'Buy' || h.type === 'Deposit') typeClass = 'text-[#10B981] font-medium bg-[#10B981]/10 rounded px-2 py-0.5';
+        if (h.type === 'Buy' || h.type === 'Deposit') typeClass = 'text-[#22C55E] font-medium bg-[#22C55E]/10 rounded px-2 py-0.5';
         else if (h.type === 'Sell' || h.type === 'Withdraw') typeClass = 'text-[#EF4444] font-medium bg-[#EF4444]/10 rounded px-2 py-0.5';
         else if (h.type === 'Dividend') typeClass = 'text-[#3B82F6] font-medium bg-[#3B82F6]/10 rounded px-2 py-0.5';
         
@@ -172,7 +171,7 @@ function renderHistory() {
         let sharesDisplay = h.shares.toLocaleString('en-US', {maximumFractionDigits: 4});
         let priceDisplay = `$${h.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 4})}`;
         let glDisplay = '-';
-        let glColor = 'text-[#888]';
+        let glColor = 'text-[#a1a1aa]';
 
         if (h.ticker === 'CASH') {
             tickerDisplay = 'CASH';
@@ -183,11 +182,11 @@ function renderHistory() {
             priceDisplay = `+$${h.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
         } else if (h.type === 'Sell' && h.trade_gl !== null) {
             glDisplay = `${h.trade_gl >= 0 ? '+' : ''}$${h.trade_gl.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-            glColor = h.trade_gl >= 0 ? 'text-[#10B981] font-semibold' : 'text-[#EF4444] font-semibold';
+            glColor = h.trade_gl >= 0 ? 'text-[#22C55E] font-semibold' : 'text-[#EF4444] font-semibold';
         }
 
         tr.innerHTML = `
-            <td class="px-2 py-3 text-[#888]">${h.date.split(' ')[0]}</td>
+            <td class="px-2 py-3 text-[#a1a1aa]">${h.date.split(' ')[0]}</td>
             <td class="px-2 py-3"><span class="${typeClass}">${h.type}</span></td>
             <td class="px-2 py-3 font-semibold text-white">${tickerDisplay}</td>
             <td class="px-2 py-3 text-right">${sharesDisplay}</td>
@@ -204,9 +203,9 @@ function drawMainChart(labels, dataPoints) {
     if (!dataPoints || dataPoints.length === 0) return;
 
     const isPositive = dataPoints[dataPoints.length - 1] >= dataPoints[0];
-    const lineColor = isPositive ? '#10B981' : '#EF4444';
+    const lineColor = isPositive ? '#22C55E' : '#EF4444'; 
     const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-    gradient.addColorStop(0, isPositive ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)');
+    gradient.addColorStop(0, isPositive ? 'rgba(34, 197, 94, 0.35)' : 'rgba(239, 68, 68, 0.35)');
     gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
 
     equityChart = new Chart(ctx, {
@@ -230,8 +229,8 @@ function drawMainChart(labels, dataPoints) {
             interaction: { intersect: false, mode: 'index' },
             plugins: { legend: { display: false } },
             scales: {
-                x: { grid: { display: false }, ticks: { color: '#666', maxTicksLimit: 6 } },
-                y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#888' } }
+                x: { grid: { display: false }, ticks: { color: '#888', maxTicksLimit: 6 } },
+                y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#a1a1aa' } }
             }
         }
     });
