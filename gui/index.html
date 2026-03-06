@@ -71,7 +71,9 @@
             <div>
                 <h3 class="text-white text-sm font-semibold mb-3 uppercase tracking-wider">Log Trade</h3>
                 <div class="space-y-3">
-                    <input id="ticker-input" class="w-full bg-zen-input border border-[#444] rounded-md px-4 py-2.5 text-sm text-white focus:border-zen-green focus:ring-0 focus:outline-none" placeholder="TICKER (e.g., BDIV.TO)" type="text"/>
+                    <input id="ticker-input" list="ticker-suggestions" class="w-full bg-zen-input border border-[#444] rounded-md px-4 py-2.5 text-sm text-white focus:border-zen-green focus:ring-0 focus:outline-none" placeholder="TICKER (e.g., BDIV.TO)" type="text"/>
+                    <datalist id="ticker-suggestions"></datalist>
+                    
                     <div class="flex gap-3">
                         <input id="shares-input" class="w-1/2 bg-zen-input border border-[#444] rounded-md px-4 py-2.5 text-sm text-white focus:border-zen-green focus:ring-0 focus:outline-none" placeholder="Shares" type="number"/>
                         <input id="price-input" class="w-1/2 bg-zen-input border border-[#444] rounded-md px-4 py-2.5 text-sm text-white focus:border-zen-green focus:ring-0 focus:outline-none" placeholder="Price" type="number"/>
@@ -139,7 +141,7 @@
                         <span class="text-[#888] text-[0.7rem] font-bold tracking-wider uppercase">Realized G/L</span>
                         <i class="fas fa-money-bill-wave text-white/10 text-xl absolute top-5 right-5"></i>
                     </div>
-                    <div id="val-real" class="text-3xl font-semibold tracking-tight">$0.00</div>
+                    <div id="val-real" class="text-3xl font-semibold tracking-tight">$0.00 (0.0%)</div>
                 </div>
             </div>
             
@@ -193,6 +195,7 @@
                                     <th class="px-5 py-3 text-left">Ticker</th>
                                     <th class="px-5 py-3 text-right">Shares</th>
                                     <th class="px-5 py-3 text-right">Price</th>
+                                    <th class="px-5 py-3 text-right">Gain/Loss</th>
                                 </tr>
                             </thead>
                             <tbody id="history-body" class="divide-y divide-white/5"></tbody>
