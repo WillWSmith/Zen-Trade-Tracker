@@ -378,8 +378,12 @@ class BackendAPI:
                         # SHORT TERM PULLBACK RULE
                         if current_price < sma_10:
                             
-                            stop_trigger = min(sma_50, recent_low) * 0.98 
-                            stop_limit = stop_trigger * 0.98 
+                            # VOLATILITY-ADJUSTED STOPS
+                            daily_volatility = c_series.pct_change().abs().tail(14).mean()
+                            dynamic_buffer = max(0.02, min(daily_volatility * 2, 0.10))
+                            
+                            stop_trigger = min(sma_50, recent_low) * (1.0 - dynamic_buffer) 
+                            stop_limit = stop_trigger * (1.0 - dynamic_buffer) 
                             
                             risk = current_price - stop_trigger
                             if risk <= 0: continue
@@ -445,15 +449,19 @@ class BackendAPI:
                 # The lowest price it hit in the last 10 trading days (2 weeks)
                 recent_low = float(c_series.tail(10).min())
                 
-                # Trailing Stop Math:
-                # We want the stop to be 2% below the highest structural floor (either the macro 50-day, or the micro 10-day base)
-                stop_trigger = max(sma_50, recent_low) * 0.98
+                # VOLATILITY-ADJUSTED TRAILING STOPS
+                daily_volatility = c_series.pct_change().abs().tail(14).mean()
+                dynamic_buffer = max(0.02, min(daily_volatility * 2, 0.10))
+                
+                # We want the stop below the highest structural floor
+                stop_trigger = max(sma_50, recent_low) * (1.0 - dynamic_buffer)
                 
                 # Safety check: if price crashed violently today, don't set a trailing stop above the current price
                 if stop_trigger >= current_price: 
-                    stop_trigger = current_price * 0.98
+                    stop_trigger = current_price * (1.0 - dynamic_buffer)
                     
-                stop_limit = stop_trigger * 0.98 # Additional 2% buffer for Wealthsimple execution
+                # The limit order gets the same dynamic breathing room to ensure execution during a gap down
+                stop_limit = stop_trigger * (1.0 - dynamic_buffer) 
                 
                 # Risk Logic
                 if current_price < sma_50:
