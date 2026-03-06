@@ -66,10 +66,18 @@ class BackendAPI:
         holdings_dict = {}
         realized_gl = 0.0
         total_cash = 0.0
+        net_deposits = 0.0
+        
+        history_enriched = []
         
         for ticker, t_type, shares, price, date in raw_trades:
-            if t_type == 'Deposit': total_cash += shares
-            elif t_type == 'Withdraw': total_cash -= shares
+            trade_gl = None
+            if t_type == 'Deposit': 
+                total_cash += shares
+                net_deposits += shares
+            elif t_type == 'Withdraw': 
+                total_cash -= shares
+                net_deposits -= shares
             elif t_type == 'Buy':
                 total_cash -= (shares * price)
                 if ticker not in holdings_dict: holdings_dict[ticker] = {'shares': 0, 'avg_cost': 0.0}
@@ -81,13 +89,25 @@ class BackendAPI:
                 total_cash += (shares * price)
                 if ticker not in holdings_dict: holdings_dict[ticker] = {'shares': 0, 'avg_cost': 0.0}
                 h = holdings_dict[ticker]
-                realized_gl += (price - h['avg_cost']) * shares
+                trade_gl = (price - h['avg_cost']) * shares
+                realized_gl += trade_gl
                 h['shares'] -= shares
                 if h['shares'] <= 0:
                     h['shares'] = 0
                     h['avg_cost'] = 0.0
 
+            history_enriched.append({
+                "date": date,
+                "type": t_type,
+                "ticker": ticker,
+                "shares": float(shares),
+                "price": float(price),
+                "trade_gl": float(trade_gl) if trade_gl is not None else None
+            })
+
+        history_enriched.reverse()
         active_tickers = [t for t, d in holdings_dict.items() if d['shares'] > 0]
+        unique_tickers = list(set([t[0] for t in raw_trades if t[0] != 'CASH']))
         
         total_market_value = 0.0
         total_book_value = 0.0
@@ -120,6 +140,7 @@ class BackendAPI:
         total_account_value = total_market_value + total_cash
         unreal_total_dlr = total_market_value - total_book_value
         unreal_total_pct = (unreal_total_dlr / total_book_value * 100) if total_book_value > 0 else 0
+        realized_pct = (realized_gl / net_deposits * 100) if net_deposits > 0 else 0.0
 
         chart_dates = []
         chart_values = []
@@ -200,7 +221,6 @@ class BackendAPI:
                 chart_values = daily_cash_limited.values.tolist()
 
         chart_values = [0 if pd.isna(x) else float(x) for x in chart_values]
-        history_array = [{"date": d, "type": t, "ticker": tick, "shares": float(s), "price": float(p)} for tick, t, s, p, d in reversed(raw_trades)]
 
         return {
             "total_account": float(total_account_value),
@@ -209,8 +229,10 @@ class BackendAPI:
             "unreal_dlr": float(unreal_total_dlr),
             "unreal_pct": float(unreal_total_pct),
             "realized_gl": float(realized_gl),
+            "realized_pct": float(realized_pct),
             "holdings": holdings_array,
-            "history": history_array,
+            "history": history_enriched,
+            "unique_tickers": unique_tickers,
             "chart_dates": chart_dates,
             "chart_values": chart_values
         }
