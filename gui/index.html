@@ -17,11 +17,11 @@
                     fontFamily: { sans: ['Inter', 'sans-serif'], },
                     colors: {
                         zen: {
-                            black: '#111111', /* Deep Charcoal Sidebar */
-                            dark: '#181818',  /* Main BG */
-                            card: '#222222',  /* Card BG */
-                            green: '#10B981', /* Premium Emerald */
-                            red: '#EF4444',   /* Softened Red */
+                            black: '#111111', 
+                            dark: '#181818',  
+                            card: '#222222',  
+                            green: '#10B981', 
+                            red: '#EF4444',   
                             gray: '#888888',
                             input: '#1a1a1a',
                         }
@@ -44,7 +44,6 @@
         table thead th { font-size: 0.75rem !important; text-transform: uppercase !important; color: #888 !important; letter-spacing: 0.05em; }
         table tbody td { font-size: 0.9rem !important; color: #eee; }
         
-        /* Pro Feature: Forces all numbers to align perfectly vertically */
         .tabular-nums { font-variant-numeric: tabular-nums; }
     </style>
 </head>
@@ -119,7 +118,6 @@
         <div class="flex-1 overflow-y-auto p-[30px] pt-0 flex flex-col gap-6 z-10 relative">
             
             <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 flex-shrink-0">
-                
                 <div class="bg-white/5 backdrop-blur-xl rounded-xl p-5 border border-white/10 border-t-2 border-t-zen-green flex flex-col justify-between h-36 relative shadow-[0_4px_20px_rgba(0,0,0,0.3)]">
                     <div class="flex justify-between items-start">
                         <span class="text-[#888] text-[0.7rem] font-bold tracking-wider uppercase">Total Account</span>
@@ -184,16 +182,16 @@
                         <h3 class="text-white text-sm font-semibold uppercase tracking-wider">Current Holdings</h3>
                         <i class="fas fa-list text-white/20"></i>
                     </div>
-                    <div class="overflow-y-auto overflow-x-hidden flex-1 relative">
+                    <div class="overflow-auto flex-1 relative">
                         <table class="w-full text-left text-sm whitespace-nowrap tabular-nums">
                             <thead class="text-zen-gray font-semibold text-xs sticky top-0 bg-zen-card z-10 border-b border-white/10 shadow-md">
                                 <tr>
-                                    <th class="px-3 py-3 text-left cursor-pointer hover:text-white transition" onclick="sortHoldings('ticker')">Ticker <i class="fas fa-sort ml-1 opacity-40"></i></th>
-                                    <th class="px-3 py-3 text-right cursor-pointer hover:text-white transition" onclick="sortHoldings('allocation')">Alloc % <i class="fas fa-sort ml-1 opacity-40"></i></th>
-                                    <th class="px-3 py-3 text-right cursor-pointer hover:text-white transition" onclick="sortHoldings('shares')">Shares <i class="fas fa-sort ml-1 opacity-40"></i></th>
-                                    <th class="px-3 py-3 text-right cursor-pointer hover:text-white transition" onclick="sortHoldings('avg_cost')">Avg Cost <i class="fas fa-sort ml-1 opacity-40"></i></th>
-                                    <th class="px-3 py-3 text-right cursor-pointer hover:text-white transition" onclick="sortHoldings('current_price')">Mkt Price <i class="fas fa-sort ml-1 opacity-40"></i></th>
-                                    <th class="px-3 py-3 text-right cursor-pointer hover:text-white transition" onclick="sortHoldings('unreal_dlr')">Unrealized <i class="fas fa-sort ml-1 opacity-40"></i></th>
+                                    <th class="px-2 py-3 text-left cursor-pointer hover:text-white transition" onclick="sortHoldings('ticker')">Ticker <i class="fas fa-sort ml-1 opacity-40"></i></th>
+                                    <th class="px-2 py-3 text-right cursor-pointer hover:text-white transition" onclick="sortHoldings('allocation')">Alloc % <i class="fas fa-sort ml-1 opacity-40"></i></th>
+                                    <th class="px-2 py-3 text-right cursor-pointer hover:text-white transition" onclick="sortHoldings('shares')">Shares <i class="fas fa-sort ml-1 opacity-40"></i></th>
+                                    <th class="px-2 py-3 text-right cursor-pointer hover:text-white transition" onclick="sortHoldings('avg_cost')">Avg Cost <i class="fas fa-sort ml-1 opacity-40"></i></th>
+                                    <th class="px-2 py-3 text-right cursor-pointer hover:text-white transition" onclick="sortHoldings('current_price')">Mkt Price <i class="fas fa-sort ml-1 opacity-40"></i></th>
+                                    <th class="px-2 py-3 text-right cursor-pointer hover:text-white transition" onclick="sortHoldings('unreal_dlr')">Unrealized <i class="fas fa-sort ml-1 opacity-40"></i></th>
                                 </tr>
                             </thead>
                             <tbody id="holdings-body" class="divide-y divide-white/5"></tbody>
@@ -206,7 +204,7 @@
                         <h3 class="text-white text-sm font-semibold uppercase tracking-wider">Trade History</h3>
                         <i class="fas fa-clock-rotate-left text-white/20"></i>
                     </div>
-                    <div class="overflow-y-auto overflow-x-hidden flex-1 relative">
+                    <div class="overflow-auto flex-1 relative">
                         <table class="w-full text-left text-sm whitespace-nowrap tabular-nums">
                             <thead class="text-zen-gray font-semibold text-xs sticky top-0 bg-zen-card z-10 border-b border-white/10 shadow-md">
                                 <tr>
