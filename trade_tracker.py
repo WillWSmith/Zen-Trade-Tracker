@@ -78,6 +78,9 @@ class BackendAPI:
             elif t_type == 'Withdraw': 
                 total_cash -= shares
                 net_deposits -= shares
+            elif t_type == 'Dividend':
+                # Dividends act as a cash injection
+                total_cash += (shares * price) # Usually shares=1, price=amount from UI
             elif t_type == 'Buy':
                 total_cash -= (shares * price)
                 if ticker not in holdings_dict: holdings_dict[ticker] = {'shares': 0, 'avg_cost': 0.0}
@@ -111,6 +114,8 @@ class BackendAPI:
         
         total_market_value = 0.0
         total_book_value = 0.0
+        total_prev_market_value = 0.0
+        total_today_dlr = 0.0
         holdings_array = []
         
         for ticker in active_tickers:
@@ -118,29 +123,47 @@ class BackendAPI:
             shares = data['shares']
             avg_cost = data['avg_cost']
             
-            try: current_price = yf.Ticker(ticker).fast_info.last_price
-            except: current_price = avg_cost
+            try: 
+                fast_info = yf.Ticker(ticker).fast_info
+                current_price = fast_info.last_price
+                prev_close = fast_info.previous_close
+            except: 
+                current_price = avg_cost
+                prev_close = avg_cost
+                
             if pd.isna(current_price): current_price = avg_cost
+            if pd.isna(prev_close): prev_close = current_price
             
             book_val = shares * avg_cost
             market_val = shares * current_price
+            prev_market_val = shares * prev_close
+            
             unreal_dlr = market_val - book_val
+            today_dlr = market_val - prev_market_val
             
             total_book_value += book_val
             total_market_value += market_val
+            total_prev_market_value += prev_market_val
+            total_today_dlr += today_dlr
             
             holdings_array.append({
                 "ticker": ticker,
                 "shares": float(shares),
                 "avg_cost": float(avg_cost),
                 "current_price": float(current_price),
-                "unreal_dlr": float(unreal_dlr)
+                "unreal_dlr": float(unreal_dlr),
+                "market_val": float(market_val) # Sent to JS for allocation calc
             })
 
         total_account_value = total_market_value + total_cash
         unreal_total_dlr = total_market_value - total_book_value
-        unreal_total_pct = (unreal_total_dlr / total_book_value * 100) if total_book_value > 0 else 0
+        unreal_total_pct = (unreal_total_dlr / total_book_value * 100) if total_book_value > 0 else 0.0
         realized_pct = (realized_gl / net_deposits * 100) if net_deposits > 0 else 0.0
+        today_pct = (total_today_dlr / total_prev_market_value * 100) if total_prev_market_value > 0 else 0.0
+
+        # Inject Allocation % into holdings array
+        for h in holdings_array:
+            h["allocation"] = (h["market_val"] / total_account_value * 100) if total_account_value > 0 else 0.0
 
         chart_dates = []
         chart_values = []
@@ -171,6 +194,7 @@ class BackendAPI:
                 elif row['type'] == 'Sell': return (row['shares'] * row['price'])
                 elif row['type'] == 'Deposit': return row['shares']
                 elif row['type'] == 'Withdraw': return -row['shares']
+                elif row['type'] == 'Dividend': return (row['shares'] * row['price'])
                 return 0
             trades_df['cash_change'] = trades_df.apply(get_cash_change, axis=1)
 
@@ -189,8 +213,7 @@ class BackendAPI:
                     try:
                         df = yf.Ticker(ticker).history(start=start_str)
                         if not df.empty:
-                            if df.index.tz is not None:
-                                df.index = df.index.tz_localize(None)
+                            if df.index.tz is not None: df.index = df.index.tz_localize(None)
                             df.index = df.index.floor('D')
                             hist_prices[ticker] = df['Close']
                     except: pass
@@ -225,6 +248,8 @@ class BackendAPI:
         return {
             "total_account": float(total_account_value),
             "total_cash": float(total_cash),
+            "today_dlr": float(total_today_dlr),
+            "today_pct": float(today_pct),
             "total_market": float(total_market_value),
             "unreal_dlr": float(unreal_total_dlr),
             "unreal_pct": float(unreal_total_pct),
@@ -286,7 +311,7 @@ if __name__ == '__main__':
     api = BackendAPI()
     window = webview.create_window(
         'Zen Trade Tracker - v1.0.0', url=get_entrypoint(), js_api=api,
-        width=1350, height=850, background_color='#121212', resizable=True
+        width=1350, height=850, background_color='#181818', resizable=True
     )
     api.window = window
     webview.start(debug=True)
