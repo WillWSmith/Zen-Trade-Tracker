@@ -15,7 +15,6 @@ function updateChartTimeframe(tf, btnElement) {
     document.querySelectorAll('.tf-btn').forEach(btn => {
         btn.className = 'tf-btn text-zen-gray px-4 py-1.5 hover:text-white transition';
     });
-    // Lowered from bg-white/20 to bg-white/10 to match the new softer panels
     btnElement.className = 'tf-btn bg-white/10 text-white px-4 py-1.5 rounded shadow-sm transition';
     refreshData();
 }
@@ -294,4 +293,76 @@ async function submitCash(type) {
     await pywebview.api.add_trade(id, "CASH", type, amount, 1.0);
     document.getElementById('cash-input').value = '';
     refreshData();
+}
+
+// --- NIGHT OWL SCANNER LOGIC --- //
+async function openScanner() {
+    const id = document.getElementById('portfolio-select').value;
+    if (!id || id === "No Portfolios") return;
+    
+    document.getElementById('scanner-modal').classList.remove('hidden');
+    document.getElementById('scanner-results').innerHTML = `
+        <div class="col-span-3 text-center py-16 flex flex-col items-center justify-center">
+            <i class="fas fa-circle-notch fa-spin text-5xl text-indigo-400 mb-6 drop-shadow-[0_0_10px_rgba(129,140,248,0.6)]"></i>
+            <h3 class="text-white text-xl font-bold tracking-wider mb-2">Analyzing TSX Markets...</h3>
+            <p class="text-zen-gray text-sm animate-pulse">Scraping data & running Night Owl Algorithmic Strategy rules...</p>
+        </div>`;
+    
+    try {
+        const cash = currentData ? currentData.total_cash : 0;
+        const results = await pywebview.api.run_swing_scanner(cash);
+        renderScannerResults(results);
+    } catch(e) {
+        document.getElementById('scanner-results').innerHTML = `<div class="col-span-3 text-center text-zen-red py-10 font-bold">Scanner Error: ${e}</div>`;
+    }
+}
+
+function closeScanner() {
+    document.getElementById('scanner-modal').classList.add('hidden');
+}
+
+function renderScannerResults(results) {
+    const container = document.getElementById('scanner-results');
+    container.innerHTML = '';
+    
+    if (!results || results.length === 0) {
+        container.innerHTML = '<div class="col-span-3 text-center text-zen-gray py-10 text-lg border border-dashed border-white/10 rounded-xl bg-white/5">No optimal pullbacks found right now.<br><span class="text-xs">Remember: Cash is a position!</span></div>';
+        return;
+    }
+    
+    results.forEach(r => {
+        container.innerHTML += `
+            <div class="bg-white/5 backdrop-blur-md border border-indigo-500/30 rounded-xl p-5 hover:border-indigo-400 hover:shadow-[0_0_20px_rgba(99,102,241,0.2)] transition relative overflow-hidden flex flex-col h-full">
+                <div class="absolute top-0 right-0 bg-indigo-500/20 text-indigo-300 text-[0.65rem] font-bold px-3 py-1.5 rounded-bl-lg border-b border-l border-indigo-500/30">2:1 R/R</div>
+                
+                <div class="mb-4">
+                    <h3 class="text-2xl font-bold text-white mb-1 tracking-tight">${r.ticker}</h3>
+                    <p class="text-indigo-400 text-xs font-semibold uppercase tracking-wider"><i class="fas fa-check-circle mr-1 opacity-70"></i>${r.setup}</p>
+                </div>
+                
+                <div class="space-y-2.5 text-sm tabular-nums flex-1">
+                    <div class="flex justify-between border-b border-white/10 pb-2">
+                        <span class="text-zen-gray">Limit Buy:</span>
+                        <span class="text-white font-bold">$${r.buy_price.toFixed(2)}</span>
+                    </div>
+                    <div class="flex justify-between border-b border-white/10 pb-2">
+                        <span class="text-zen-gray">Stop Loss:</span>
+                        <span class="text-[#EF4444] font-bold">$${r.stop_loss.toFixed(2)}</span>
+                    </div>
+                    <div class="flex justify-between border-b border-white/10 pb-2">
+                        <span class="text-zen-gray">Take Profit:</span>
+                        <span class="text-zen-green font-bold">$${r.take_profit.toFixed(2)}</span>
+                    </div>
+                </div>
+                
+                <div class="mt-5 bg-black/50 rounded-lg p-3 border border-white/5 flex-shrink-0">
+                    <p class="text-[0.65rem] text-zen-gray uppercase tracking-widest mb-1 font-bold">Suggested Sizing</p>
+                    <div class="flex justify-between items-baseline">
+                        <span class="text-xl font-extrabold text-white">${r.shares} <span class="text-sm font-normal text-zen-gray">Shares</span></span>
+                        <span class="text-indigo-300 text-xs font-bold bg-indigo-500/10 px-2 py-1 rounded">Cost: $${r.total_cost.toFixed(2)}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
 }
