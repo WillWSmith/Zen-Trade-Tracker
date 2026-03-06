@@ -370,3 +370,81 @@ function renderScannerResults(results) {
         `;
     });
 }
+
+// --- PORTFOLIO AUDITOR LOGIC --- //
+async function openAuditor() {
+    if (!currentData || !currentData.holdings || currentData.holdings.length === 0) {
+        alert("You don't have any active stock holdings to audit.");
+        return;
+    }
+    
+    document.getElementById('auditor-modal').classList.remove('hidden');
+    document.getElementById('auditor-results').innerHTML = `
+        <div class="col-span-3 text-center py-16 flex flex-col items-center justify-center">
+            <i class="fas fa-circle-notch fa-spin text-5xl text-teal-400 mb-6 drop-shadow-[0_0_10px_rgba(45,212,191,0.6)]"></i>
+            <h3 class="text-white text-xl font-bold tracking-wider mb-2">Auditing Current Holdings...</h3>
+            <p class="text-zen-gray text-sm animate-pulse">Calculating Trailing Stops & Trend Health...</p>
+        </div>`;
+    
+    try {
+        const activeTickers = currentData.holdings.map(h => h.ticker);
+        const results = await pywebview.api.audit_portfolio(activeTickers);
+        renderAuditorResults(results);
+    } catch(e) {
+        document.getElementById('auditor-results').innerHTML = `<div class="col-span-3 text-center text-zen-red py-10 font-bold">Auditor Error: ${e}</div>`;
+    }
+}
+
+function closeAuditor() {
+    document.getElementById('auditor-modal').classList.add('hidden');
+}
+
+function renderAuditorResults(results) {
+    const container = document.getElementById('auditor-results');
+    container.innerHTML = '';
+    
+    if (!results || results.length === 0) {
+        container.innerHTML = '<div class="col-span-3 text-center text-zen-gray py-10 text-lg border border-dashed border-white/10 rounded-xl bg-white/5">No audit data available.</div>';
+        return;
+    }
+    
+    results.forEach(r => {
+        if (r.ticker === "ERROR") {
+            container.innerHTML += `<div class="col-span-3 text-center text-zen-red py-2">${r.reason}</div>`;
+            return;
+        }
+
+        // Setup the color coding for the border
+        let borderColor = 'border-teal-500/30 hover:border-teal-400 hover:shadow-[0_0_20px_rgba(20,184,166,0.2)]';
+        if (r.status === 'SELL') borderColor = 'border-red-500/50 hover:border-red-400 hover:shadow-[0_0_20px_rgba(239,68,68,0.2)]';
+        if (r.status === 'TRIM') borderColor = 'border-yellow-500/50 hover:border-yellow-400 hover:shadow-[0_0_20px_rgba(234,179,8,0.2)]';
+
+        container.innerHTML += `
+            <div class="bg-white/5 backdrop-blur-md border ${borderColor} rounded-xl p-5 transition relative overflow-hidden flex flex-col h-full">
+                
+                <div class="mb-4">
+                    <div class="flex justify-between items-center mb-1">
+                        <h3 class="text-2xl font-bold text-white tracking-tight">${r.ticker}</h3>
+                        <span class="${r.color} font-black text-lg tracking-wider">${r.status}</span>
+                    </div>
+                    <p class="${r.color} text-xs font-semibold uppercase tracking-wider opacity-80">${r.reason}</p>
+                </div>
+                
+                <div class="space-y-2.5 text-sm tabular-nums flex-1 mt-2">
+                    <div class="flex justify-between border-b border-white/10 pb-2">
+                        <span class="text-zen-gray">Current Price:</span>
+                        <span class="text-white font-bold">$${r.current_price.toFixed(2)}</span>
+                    </div>
+                    <div class="flex justify-between border-b border-white/10 pb-2">
+                        <span class="text-zen-gray" title="Recommended Trailing Stop Strike Price">Trail Trigger:</span>
+                        <span class="text-[#EF4444] font-bold">$${r.stop_trigger.toFixed(2)}</span>
+                    </div>
+                    <div class="flex justify-between border-b border-white/10 pb-2">
+                        <span class="text-zen-gray" title="Recommended Trailing Stop Limit Price">Trail Limit:</span>
+                        <span class="text-[#EF4444] font-bold opacity-80">$${r.stop_limit.toFixed(2)}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+}
