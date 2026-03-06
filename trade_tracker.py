@@ -261,8 +261,10 @@ class BackendAPI:
             "chart_values": chart_values
         }
 
+# --- NIGHT OWL SCANNER ALGORITHM (Fully API Driven) ---
     def run_swing_scanner(self, cash_available):
         try:
+            # 1. Position Sizing Logic
             eval_cash = max(cash_available, 5.0) 
             
             if eval_cash < 100:
@@ -273,49 +275,68 @@ class BackendAPI:
             min_shares = 10  
             max_allowed_price = max_position_size / min_shares
             
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-            
+            # 2. Dynamic TradingView Scrape (TSX.V)
             tsx_v_staples = [
                 'HIVE.V', 'BITF.V', 'NILI.V', 'PMN.V', 'SGN.V', 'LI.V', 'EU.V', 'CRE.V', 
                 'ISO.V', 'AFM.V', 'VLI.V', 'GGD.V', 'RECO.V', 'SLI.V', 'FL.V', 'NGD.V'
             ]
+            
+            tv_url = "https://scanner.tradingview.com/canada/scan"
+            
             try:
-                v_resp = requests.get('https://en.wikipedia.org/wiki/TSX_Venture_50', headers=headers)
-                v_tables = pd.read_html(v_resp.text)
-                dynamic_v = []
-                for table in v_tables:
-                    if 'Symbol' in table.columns:
-                        dynamic_v.extend([str(s).replace('.', '-') + '.V' for s in table['Symbol'].dropna().tolist()])
-                    elif 'Ticker' in table.columns:
-                        dynamic_v.extend([str(s).replace('.', '-') + '.V' for s in table['Ticker'].dropna().tolist()])
-                tsx_v_staples = list(set(tsx_v_staples + dynamic_v))
+                # Get Top 100 Volume Leaders for TSX Venture
+                v_payload = {
+                    "filter": [{"left": "exchange", "operation": "equal", "right": "TSXV"}],
+                    "options": {"lang": "en"},
+                    "markets": ["canada"],
+                    "symbols": {"query": {"types": []}, "tickers": []},
+                    "columns": ["name", "volume"],
+                    "sort": {"sortBy": "volume", "sortOrder": "desc"},
+                    "range": [0, 100] 
+                }
+                v_resp = requests.post(tv_url, json=v_payload, timeout=5)
+                if v_resp.status_code == 200:
+                    dynamic_v = [f"{item['d'][0].replace('.', '-')}.V" for item in v_resp.json().get("data", []) if item.get("d")]
+                    tsx_v_staples = list(set(tsx_v_staples + dynamic_v))
             except: pass
 
             full_universe = []
             
             if eval_cash < 2000:
+                # Target <$2k: Prioritize Venture
                 full_universe = tsx_v_staples + ['BTE.TO', 'CPG.TO', 'ATH.TO', 'CVE.TO', 'CJ.TO']
             else:
+                # Target >$2k: Dynamic TradingView Scrape (TSX Main Board)
+                dynamic_tsx = ['SHOP.TO', 'RY.TO', 'TD.TO', 'ENB.TO', 'CNR.TO', 'CP.TO', 'BMO.TO', 'SU.TO', 'CSU.TO']
                 try:
-                    t_resp = requests.get('https://en.wikipedia.org/wiki/S%26P/TSX_Composite_Index', headers=headers)
-                    t_tables = pd.read_html(t_resp.text)
-                    dynamic_tsx = []
-                    for table in t_tables:
-                        if 'Symbol' in table.columns:
-                            dynamic_tsx = [str(s).replace('.', '-') + '.TO' for s in table['Symbol'].dropna().tolist()]
-                            break
-                except:
-                    dynamic_tsx = ['SHOP.TO', 'RY.TO', 'TD.TO', 'ENB.TO', 'CNR.TO', 'CP.TO', 'BMO.TO', 'SU.TO', 'CSU.TO']
+                    # Get Top 150 Volume Leaders for Main TSX
+                    t_payload = {
+                        "filter": [{"left": "exchange", "operation": "equal", "right": "TSX"}],
+                        "options": {"lang": "en"},
+                        "markets": ["canada"],
+                        "symbols": {"query": {"types": []}, "tickers": []},
+                        "columns": ["name", "volume"],
+                        "sort": {"sortBy": "volume", "sortOrder": "desc"},
+                        "range": [0, 150] 
+                    }
+                    t_resp = requests.post(tv_url, json=t_payload, timeout=5)
+                    if t_resp.status_code == 200:
+                        dynamic_tsx = [f"{item['d'][0].replace('.', '-')}.TO" for item in t_resp.json().get("data", []) if item.get("d")]
+                except: pass
                     
                 if eval_cash < 10000:
+                    # Blend for mid-sized accounts
                     full_universe = dynamic_tsx + tsx_v_staples
                 else:
+                    # >$10k prioritize main board TSX
                     full_universe = dynamic_tsx + tsx_v_staples[:15]
 
+            # Failsafe: Cap universe size so Yahoo Finance doesn't time out the app
             full_universe = list(set(full_universe))
             if len(full_universe) > 350:
                 full_universe = full_universe[:350]
 
+            # 3. Download and Evaluate via Yahoo Finance
             data = yf.download(full_universe, period="3mo", progress=False)
             if 'Close' not in data or 'Volume' not in data: return []
                 
@@ -334,14 +355,17 @@ class BackendAPI:
                 
                 current_price = float(c_series.iloc[-1])
                 
+                # PRICE & SPREAD CHECK
                 if current_price > max_allowed_price or current_price < 0.15: continue 
                 
+                # LIQUIDITY CHECK
                 avg_vol = float(v_series.tail(20).mean())
                 is_venture = '.V' in ticker
                 min_adv = 250000 if is_venture else 100000
                 
                 if avg_vol < min_adv: continue
                 
+                # NIGHT OWL MATH
                 sma_50 = float(c_series.tail(50).mean())
                 sma_10 = float(c_series.tail(10).mean())
                 recent_low = float(c_series.tail(10).min())
@@ -349,9 +373,8 @@ class BackendAPI:
                 if current_price > sma_50 and current_price < (sma_50 * 1.20):
                     if current_price < sma_10:
                         
-                        # NEW: Stop Limit logic for Wealthsimple
                         stop_trigger = min(sma_50, recent_low) * 0.98 
-                        stop_limit = stop_trigger * 0.98 # Additional 2% buffer for execution gap
+                        stop_limit = stop_trigger * 0.98 
                         
                         risk = current_price - stop_trigger
                         if risk <= 0: continue
@@ -371,7 +394,7 @@ class BackendAPI:
                                 "setup": "Night Owl Drop"
                             })
                             
-            # Sort the best opportunities by the tightest Risk %
+            # Sort by tightest Risk %
             suggestions.sort(key=lambda x: (x['buy_price'] - x['stop_trigger']) / x['buy_price'])
             return suggestions[:3] 
             
