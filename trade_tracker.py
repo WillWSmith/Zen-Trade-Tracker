@@ -463,11 +463,15 @@ class BackendAPI:
                 # The limit order gets the same dynamic breathing room to ensure execution during a gap down
                 stop_limit = stop_trigger * (1.0 - dynamic_buffer) 
                 
-                # Risk Logic
-                if current_price < sma_50:
+# Risk Logic (Synced with Volatility Stops)
+                if current_price <= stop_trigger:
                     status = "SELL"
                     color = "text-[#EF4444]" # Red
-                    reason = "Trend Broken (Below 50 SMA)"
+                    reason = "Stop Loss Breached"
+                elif current_price < sma_50:
+                    status = "HOLD"
+                    color = "text-[#EAB308]" # Yellow warning
+                    reason = "Testing Volatility Support"
                 elif current_price > (sma_50 * 1.25):
                     status = "TRIM"
                     color = "text-[#EAB308]" # Yellow
