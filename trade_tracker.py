@@ -261,7 +261,7 @@ class BackendAPI:
             "chart_values": chart_values
         }
 
-# --- NIGHT OWL SCANNER ALGORITHM (Fully API Driven) ---
+    # --- NIGHT OWL SCANNER ALGORITHM (Institutional Grade) ---
     def run_swing_scanner(self, cash_available):
         try:
             # 1. Position Sizing Logic
@@ -284,7 +284,6 @@ class BackendAPI:
             tv_url = "https://scanner.tradingview.com/canada/scan"
             
             try:
-                # Get Top 100 Volume Leaders for TSX Venture
                 v_payload = {
                     "filter": [{"left": "exchange", "operation": "equal", "right": "TSXV"}],
                     "options": {"lang": "en"},
@@ -303,13 +302,10 @@ class BackendAPI:
             full_universe = []
             
             if eval_cash < 2000:
-                # Target <$2k: Prioritize Venture
                 full_universe = tsx_v_staples + ['BTE.TO', 'CPG.TO', 'ATH.TO', 'CVE.TO', 'CJ.TO']
             else:
-                # Target >$2k: Dynamic TradingView Scrape (TSX Main Board)
                 dynamic_tsx = ['SHOP.TO', 'RY.TO', 'TD.TO', 'ENB.TO', 'CNR.TO', 'CP.TO', 'BMO.TO', 'SU.TO', 'CSU.TO']
                 try:
-                    # Get Top 150 Volume Leaders for Main TSX
                     t_payload = {
                         "filter": [{"left": "exchange", "operation": "equal", "right": "TSX"}],
                         "options": {"lang": "en"},
@@ -325,19 +321,16 @@ class BackendAPI:
                 except: pass
                     
                 if eval_cash < 10000:
-                    # Blend for mid-sized accounts
                     full_universe = dynamic_tsx + tsx_v_staples
                 else:
-                    # >$10k prioritize main board TSX
                     full_universe = dynamic_tsx + tsx_v_staples[:15]
 
-            # Failsafe: Cap universe size so Yahoo Finance doesn't time out the app
             full_universe = list(set(full_universe))
             if len(full_universe) > 350:
                 full_universe = full_universe[:350]
 
-            # 3. Download and Evaluate via Yahoo Finance
-            data = yf.download(full_universe, period="3mo", progress=False)
+            # 3. Download 1 FULL YEAR of data to calculate 200-Day SMA and 52-Wk High
+            data = yf.download(full_universe, period="1y", progress=False)
             if 'Close' not in data or 'Volume' not in data: return []
                 
             close_data = data['Close']
@@ -351,7 +344,8 @@ class BackendAPI:
                 c_series = close_data[ticker].dropna()
                 v_series = volume_data[ticker].dropna()
                 
-                if len(c_series) < 50: continue
+                # Must have at least 200 trading days to confirm a true macro uptrend
+                if len(c_series) < 200: continue
                 
                 current_price = float(c_series.iloc[-1])
                 
@@ -360,40 +354,60 @@ class BackendAPI:
                 
                 # LIQUIDITY CHECK
                 avg_vol = float(v_series.tail(20).mean())
+                today_vol = float(v_series.iloc[-1])
                 is_venture = '.V' in ticker
                 min_adv = 250000 if is_venture else 100000
                 
                 if avg_vol < min_adv: continue
                 
-                # NIGHT OWL MATH
+                # ELITE MATH (1-Year Context)
+                sma_200 = float(c_series.tail(200).mean())
                 sma_50 = float(c_series.tail(50).mean())
                 sma_10 = float(c_series.tail(10).mean())
                 recent_low = float(c_series.tail(10).min())
+                high_52wk = float(c_series.max())
                 
-                if current_price > sma_50 and current_price < (sma_50 * 1.20):
-                    if current_price < sma_10:
+                # MOMENTUM PROXIMITY FILTER: Current price must be within 25% of the 52-week high
+                if current_price < (high_52wk * 0.75): continue
+                
+                # THE "FORTRESS" RULE: 50 SMA must be higher than 200 SMA (Golden Cross)
+                if sma_50 > sma_200:
+                    # THE "STRATOSPHERE" RULE: Must be above 50 SMA, but NO MORE than 20% above it
+                    if current_price > sma_50 and current_price < (sma_50 * 1.20):
                         
-                        stop_trigger = min(sma_50, recent_low) * 0.98 
-                        stop_limit = stop_trigger * 0.98 
-                        
-                        risk = current_price - stop_trigger
-                        if risk <= 0: continue
-                        
-                        take_profit = current_price + (risk * 2.5)
-                        shares = int(max_position_size / current_price)
-                        
-                        if shares >= min_shares:
-                            suggestions.append({
-                                "ticker": ticker,
-                                "buy_price": current_price,
-                                "stop_trigger": stop_trigger,
-                                "stop_limit": stop_limit,
-                                "take_profit": take_profit,
-                                "shares": shares,
-                                "total_cost": shares * current_price,
-                                "setup": "Night Owl Drop"
-                            })
+                        # SHORT TERM PULLBACK RULE
+                        if current_price < sma_10:
                             
+                            stop_trigger = min(sma_50, recent_low) * 0.98 
+                            stop_limit = stop_trigger * 0.98 
+                            
+                            risk = current_price - stop_trigger
+                            if risk <= 0: continue
+                            
+                            take_profit = current_price + (risk * 2.5)
+                            shares = int(max_position_size / current_price)
+                            
+                            if shares >= min_shares:
+                                
+                                # SMART TAGGING LOGIC
+                                if current_price >= (high_52wk * 0.90):
+                                    setup_tag = "🔥 52-Wk High Pullback"
+                                elif today_vol > (avg_vol * 1.5):
+                                    setup_tag = "🌊 High Volume Drop"
+                                else:
+                                    setup_tag = "🛡️ Golden Cross Pullback"
+                                
+                                suggestions.append({
+                                    "ticker": ticker,
+                                    "buy_price": current_price,
+                                    "stop_trigger": stop_trigger,
+                                    "stop_limit": stop_limit,
+                                    "take_profit": take_profit,
+                                    "shares": shares,
+                                    "total_cost": shares * current_price,
+                                    "setup": setup_tag
+                                })
+                                
             # Sort by tightest Risk %
             suggestions.sort(key=lambda x: (x['buy_price'] - x['stop_trigger']) / x['buy_price'])
             return suggestions[:3] 
