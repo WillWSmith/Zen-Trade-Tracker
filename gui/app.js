@@ -395,6 +395,30 @@ async function openAuditor() {
     }
 }
 
+// --- PORTFOLIO AUDITOR LOGIC --- //
+async function openAuditor() {
+    if (!currentData || !currentData.holdings || currentData.holdings.length === 0) {
+        alert("You don't have any active stock holdings to audit.");
+        return;
+    }
+    
+    document.getElementById('auditor-modal').classList.remove('hidden');
+    document.getElementById('auditor-results').innerHTML = `
+        <div class="col-span-3 text-center py-16 flex flex-col items-center justify-center">
+            <i class="fas fa-circle-notch fa-spin text-5xl text-teal-400 mb-6 drop-shadow-[0_0_10px_rgba(45,212,191,0.6)]"></i>
+            <h3 class="text-white text-xl font-bold tracking-wider mb-2">Auditing Current Holdings...</h3>
+            <p class="text-zen-gray text-sm animate-pulse">Calculating Trailing Stops & Trend Health...</p>
+        </div>`;
+    
+    try {
+        const activeTickers = currentData.holdings.map(h => h.ticker);
+        const results = await pywebview.api.audit_portfolio(activeTickers);
+        renderAuditorResults(results);
+    } catch(e) {
+        document.getElementById('auditor-results').innerHTML = `<div class="col-span-3 text-center text-zen-red py-10 font-bold">Auditor Error: ${e}</div>`;
+    }
+}
+
 function closeAuditor() {
     document.getElementById('auditor-modal').classList.add('hidden');
 }
