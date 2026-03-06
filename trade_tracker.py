@@ -79,8 +79,7 @@ class BackendAPI:
                 total_cash -= shares
                 net_deposits -= shares
             elif t_type == 'Dividend':
-                # Dividends act as a cash injection
-                total_cash += (shares * price) # Usually shares=1, price=amount from UI
+                total_cash += (shares * price) 
             elif t_type == 'Buy':
                 total_cash -= (shares * price)
                 if ticker not in holdings_dict: holdings_dict[ticker] = {'shares': 0, 'avg_cost': 0.0}
@@ -152,7 +151,7 @@ class BackendAPI:
                 "avg_cost": float(avg_cost),
                 "current_price": float(current_price),
                 "unreal_dlr": float(unreal_dlr),
-                "market_val": float(market_val) # Sent to JS for allocation calc
+                "market_val": float(market_val) 
             })
 
         total_account_value = total_market_value + total_cash
@@ -161,7 +160,6 @@ class BackendAPI:
         realized_pct = (realized_gl / net_deposits * 100) if net_deposits > 0 else 0.0
         today_pct = (total_today_dlr / total_prev_market_value * 100) if total_prev_market_value > 0 else 0.0
 
-        # Inject Allocation % into holdings array
         for h in holdings_array:
             h["allocation"] = (h["market_val"] / total_account_value * 100) if total_account_value > 0 else 0.0
 
@@ -314,4 +312,6 @@ if __name__ == '__main__':
         width=1350, height=850, background_color='#181818', resizable=True
     )
     api.window = window
-    webview.start(debug=True)
+    
+    # FIX: Dev Tools disabled
+    webview.start()
