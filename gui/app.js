@@ -346,8 +346,12 @@ function renderScannerResults(results) {
                         <span class="text-white font-bold">$${r.buy_price.toFixed(2)}</span>
                     </div>
                     <div class="flex justify-between border-b border-white/10 pb-2">
-                        <span class="text-zen-gray">Stop Loss:</span>
-                        <span class="text-[#EF4444] font-bold">$${r.stop_loss.toFixed(2)}</span>
+                        <span class="text-zen-gray" title="Set this as your Stop Price">Stop (Trigger):</span>
+                        <span class="text-[#EF4444] font-bold">$${r.stop_trigger.toFixed(2)}</span>
+                    </div>
+                    <div class="flex justify-between border-b border-white/10 pb-2">
+                        <span class="text-zen-gray" title="Set this as your Limit Price">Stop (Limit):</span>
+                        <span class="text-[#EF4444] font-bold opacity-80">$${r.stop_limit.toFixed(2)}</span>
                     </div>
                     <div class="flex justify-between border-b border-white/10 pb-2">
                         <span class="text-zen-gray">Take Profit:</span>
