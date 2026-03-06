@@ -121,7 +121,6 @@ function sortHistory(col) {
 function renderHoldings() {
     if (!currentData) return;
     
-    // Sort logic
     let sorted = [...currentData.holdings].sort((a, b) => {
         let valA = a[holdSort.column]; let valB = b[holdSort.column];
         if (typeof valA === 'string') return holdSort.asc ? valA.localeCompare(valB) : valB.localeCompare(valA);
@@ -135,13 +134,14 @@ function renderHoldings() {
         tr.className = 'table-row-hover transition-colors';
         const colorClass = h.unreal_dlr >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]';
         const prefix = h.unreal_dlr >= 0 ? '+' : '';
+        // FIX: Replaced px-3 with px-2 for a super tight fit
         tr.innerHTML = `
-            <td class="px-3 py-3 font-semibold text-white">${h.ticker}</td>
-            <td class="px-3 py-3 text-right text-zen-green/80 bg-zen-green/5">${h.allocation.toFixed(1)}%</td>
-            <td class="px-3 py-3 text-right">${h.shares.toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
-            <td class="px-3 py-3 text-right">$${h.avg_cost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 4})}</td>
-            <td class="px-3 py-3 text-right">$${h.current_price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 4})}</td>
-            <td class="px-3 py-3 text-right font-semibold ${colorClass}">${prefix}$${h.unreal_dlr.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+            <td class="px-2 py-3 font-semibold text-white">${h.ticker}</td>
+            <td class="px-2 py-3 text-right text-zen-green/80 bg-zen-green/5">${h.allocation.toFixed(1)}%</td>
+            <td class="px-2 py-3 text-right">${h.shares.toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
+            <td class="px-2 py-3 text-right">$${h.avg_cost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 4})}</td>
+            <td class="px-2 py-3 text-right">$${h.current_price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 4})}</td>
+            <td class="px-2 py-3 text-right font-semibold ${colorClass}">${prefix}$${h.unreal_dlr.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
         `;
         body.appendChild(tr);
     });
@@ -166,7 +166,7 @@ function renderHistory() {
         let typeClass = '';
         if (h.type === 'Buy' || h.type === 'Deposit') typeClass = 'text-[#10B981] font-medium bg-[#10B981]/10 rounded px-2 py-0.5';
         else if (h.type === 'Sell' || h.type === 'Withdraw') typeClass = 'text-[#EF4444] font-medium bg-[#EF4444]/10 rounded px-2 py-0.5';
-        else if (h.type === 'Dividend') typeClass = 'text-[#3B82F6] font-medium bg-[#3B82F6]/10 rounded px-2 py-0.5'; // Blue for Dividend
+        else if (h.type === 'Dividend') typeClass = 'text-[#3B82F6] font-medium bg-[#3B82F6]/10 rounded px-2 py-0.5';
         
         let tickerDisplay = h.ticker;
         let sharesDisplay = h.shares.toLocaleString('en-US', {maximumFractionDigits: 4});
@@ -204,7 +204,7 @@ function drawMainChart(labels, dataPoints) {
     if (!dataPoints || dataPoints.length === 0) return;
 
     const isPositive = dataPoints[dataPoints.length - 1] >= dataPoints[0];
-    const lineColor = isPositive ? '#10B981' : '#EF4444'; // Emerald or Red
+    const lineColor = isPositive ? '#10B981' : '#EF4444';
     const gradient = ctx.createLinearGradient(0, 0, 0, 300);
     gradient.addColorStop(0, isPositive ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)');
     gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
@@ -237,7 +237,6 @@ function drawMainChart(labels, dataPoints) {
     });
 }
 
-// Logic Actions
 async function addPortfolio() {
     const name = prompt("Enter new portfolio name:");
     if (name) { await pywebview.api.add_portfolio(name); loadPortfolios(); }
@@ -278,7 +277,6 @@ async function submitDividend() {
         alert("To log a Dividend: Type the Ticker, leave Shares blank, and enter the total payout amount in the 'Price' box."); return;
     }
     
-    // Dividend is treated as Shares=1, Price=Amount in the DB logic
     await pywebview.api.add_trade(id, ticker, "Dividend", 1.0, amount);
     document.getElementById('shares-input').value = '';
     document.getElementById('price-input').value = '';
