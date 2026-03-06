@@ -415,6 +415,78 @@ class BackendAPI:
         except Exception as e:
             return [{"ticker": "ERROR", "buy_price": 0, "stop_trigger": 0, "stop_limit": 0, "take_profit": 0, "shares": 0, "total_cost": 0, "setup": str(e)}]
 
+    # --- PORTFOLIO AUDITOR ALGORITHM ---
+    def audit_portfolio(self, tickers):
+        if not tickers: return []
+        try:
+            # Download 1 year of data for active holdings
+            data = yf.download(tickers, period="1y", progress=False)
+            
+            # Formatting handling depending on if user holds 1 stock or multiple
+            close_data = pd.DataFrame()
+            if len(tickers) == 1:
+                if 'Close' in data:
+                    close_data[tickers[0]] = data['Close']
+            else:
+                if 'Close' in data:
+                    close_data = data['Close']
+                    
+            if close_data.empty: return []
+
+            results = []
+            for ticker in tickers:
+                if ticker not in close_data.columns: continue
+                
+                c_series = close_data[ticker].dropna()
+                if len(c_series) < 50: continue
+                
+                current_price = float(c_series.iloc[-1])
+                sma_50 = float(c_series.tail(50).mean())
+                # The lowest price it hit in the last 10 trading days (2 weeks)
+                recent_low = float(c_series.tail(10).min())
+                
+                # Trailing Stop Math:
+                # We want the stop to be 2% below the highest structural floor (either the macro 50-day, or the micro 10-day base)
+                stop_trigger = max(sma_50, recent_low) * 0.98
+                
+                # Safety check: if price crashed violently today, don't set a trailing stop above the current price
+                if stop_trigger >= current_price: 
+                    stop_trigger = current_price * 0.98
+                    
+                stop_limit = stop_trigger * 0.98 # Additional 2% buffer for Wealthsimple execution
+                
+                # Risk Logic
+                if current_price < sma_50:
+                    status = "SELL"
+                    color = "text-[#EF4444]" # Red
+                    reason = "Trend Broken (Below 50 SMA)"
+                elif current_price > (sma_50 * 1.25):
+                    status = "TRIM"
+                    color = "text-[#EAB308]" # Yellow
+                    reason = "Overextended (>25% Above 50 SMA)"
+                else:
+                    status = "HOLD"
+                    color = "text-[#22C55E]" # Green
+                    reason = "Trend Healthy"
+                    
+                results.append({
+                    "ticker": ticker,
+                    "current_price": current_price,
+                    "stop_trigger": stop_trigger,
+                    "stop_limit": stop_limit,
+                    "status": status,
+                    "color": color,
+                    "reason": reason
+                })
+                
+            # Sort RED (Sell) -> YELLOW (Trim) -> GREEN (Hold)
+            sort_order = {"SELL": 0, "TRIM": 1, "HOLD": 2}
+            results.sort(key=lambda x: sort_order.get(x["status"], 3))
+            
+            return results
+        except Exception as e:
+            return [{"ticker": "ERROR", "reason": str(e)}]
+    
     def export_csv(self):
         if self.window:
             dest_path = self.window.create_file_dialog(webview.SAVE_DIALOG, directory='', save_filename='ZenTrades.csv')
