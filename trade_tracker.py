@@ -261,19 +261,22 @@ class BackendAPI:
             "chart_values": chart_values
         }
 
-    # --- NIGHT OWL SCANNER ALGORITHM (Institutional Grade) ---
+    # --- NIGHT OWL SCANNER ALGORITHM (Dynamic Tiers) ---
     def run_swing_scanner(self, cash_available):
         try:
-            # 1. Position Sizing Logic
+            # 1. DYNAMIC PORTFOLIO SIZING (The Sliding Scale)
             eval_cash = max(cash_available, 5.0) 
             
-            if eval_cash < 100:
-                max_position_size = eval_cash
+            if eval_cash < 500:
+                max_position_size = eval_cash * 1.0    # Micro: 100% Allocation
+            elif eval_cash < 2500:
+                max_position_size = eval_cash * 0.50   # Small: 50% Allocation
+            elif eval_cash < 10000:
+                max_position_size = eval_cash * 0.33   # Medium: 33% Allocation
             else:
-                max_position_size = eval_cash * 0.20
+                max_position_size = eval_cash * 0.20   # Large: 20% Allocation
                 
-            min_shares = 10  
-            max_allowed_price = max_position_size / min_shares
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
             
             # 2. Dynamic TradingView Scrape (TSX.V)
             tsx_v_staples = [
@@ -301,7 +304,9 @@ class BackendAPI:
 
             full_universe = []
             
-            if eval_cash < 2000:
+            # Because of our new sliding scale, even a $1k account gets TSX access!
+            if eval_cash < 500:
+                # True micro accounts stick to cheap momentum plays
                 full_universe = tsx_v_staples + ['BTE.TO', 'CPG.TO', 'ATH.TO', 'CVE.TO', 'CJ.TO']
             else:
                 dynamic_tsx = ['SHOP.TO', 'RY.TO', 'TD.TO', 'ENB.TO', 'CNR.TO', 'CP.TO', 'BMO.TO', 'SU.TO', 'CSU.TO']
@@ -320,16 +325,18 @@ class BackendAPI:
                         dynamic_tsx = [f"{item['d'][0].replace('.', '-')}.TO" for item in t_resp.json().get("data", []) if item.get("d")]
                 except: pass
                     
-                if eval_cash < 10000:
+                if eval_cash < 5000:
+                    # Blend for mid-sized accounts
                     full_universe = dynamic_tsx + tsx_v_staples
                 else:
+                    # Larger accounts prioritize main board TSX
                     full_universe = dynamic_tsx + tsx_v_staples[:15]
 
             full_universe = list(set(full_universe))
             if len(full_universe) > 350:
                 full_universe = full_universe[:350]
 
-            # 3. Download 1 FULL YEAR of data to calculate 200-Day SMA and 52-Wk High
+            # 3. Download 1 FULL YEAR of data
             data = yf.download(full_universe, period="1y", progress=False)
             if 'Close' not in data or 'Volume' not in data: return []
                 
@@ -344,10 +351,14 @@ class BackendAPI:
                 c_series = close_data[ticker].dropna()
                 v_series = volume_data[ticker].dropna()
                 
-                # Must have at least 200 trading days to confirm a true macro uptrend
                 if len(c_series) < 200: continue
                 
                 current_price = float(c_series.iloc[-1])
+                is_venture = '.V' in ticker
+                
+                # NEW SHARE MINIMUM LOGIC (TSX = 1 share, TSXV = 100 shares)
+                min_shares = 100 if is_venture else 1
+                max_allowed_price = max_position_size / min_shares
                 
                 # PRICE & SPREAD CHECK
                 if current_price > max_allowed_price or current_price < 0.15: continue 
@@ -355,27 +366,21 @@ class BackendAPI:
                 # LIQUIDITY CHECK
                 avg_vol = float(v_series.tail(20).mean())
                 today_vol = float(v_series.iloc[-1])
-                is_venture = '.V' in ticker
                 min_adv = 250000 if is_venture else 100000
                 
                 if avg_vol < min_adv: continue
                 
-                # ELITE MATH (1-Year Context)
+                # ELITE MATH
                 sma_200 = float(c_series.tail(200).mean())
                 sma_50 = float(c_series.tail(50).mean())
                 sma_10 = float(c_series.tail(10).mean())
                 recent_low = float(c_series.tail(10).min())
                 high_52wk = float(c_series.max())
                 
-                # MOMENTUM PROXIMITY FILTER: Current price must be within 25% of the 52-week high
                 if current_price < (high_52wk * 0.75): continue
                 
-                # THE "FORTRESS" RULE: 50 SMA must be higher than 200 SMA (Golden Cross)
                 if sma_50 > sma_200:
-                    # THE "STRATOSPHERE" RULE: Must be above 50 SMA, but NO MORE than 20% above it
                     if current_price > sma_50 and current_price < (sma_50 * 1.20):
-                        
-                        # SHORT TERM PULLBACK RULE
                         if current_price < sma_10:
                             
                             # VOLATILITY-ADJUSTED STOPS
@@ -393,7 +398,6 @@ class BackendAPI:
                             
                             if shares >= min_shares:
                                 
-                                # SMART TAGGING LOGIC
                                 if current_price >= (high_52wk * 0.90):
                                     setup_tag = "🔥 52-Wk High Pullback"
                                 elif today_vol > (avg_vol * 1.5):
@@ -412,7 +416,6 @@ class BackendAPI:
                                     "setup": setup_tag
                                 })
                                 
-            # Sort by tightest Risk %
             suggestions.sort(key=lambda x: (x['buy_price'] - x['stop_trigger']) / x['buy_price'])
             return suggestions[:3] 
             
@@ -423,10 +426,8 @@ class BackendAPI:
     def audit_portfolio(self, tickers):
         if not tickers: return []
         try:
-            # Download 1 year of data for active holdings
             data = yf.download(tickers, period="1y", progress=False)
             
-            # Formatting handling depending on if user holds 1 stock or multiple
             close_data = pd.DataFrame()
             if len(tickers) == 1:
                 if 'Close' in data:
@@ -446,21 +447,17 @@ class BackendAPI:
                 
                 current_price = float(c_series.iloc[-1])
                 sma_50 = float(c_series.tail(50).mean())
-                # The lowest price it hit in the last 10 trading days (2 weeks)
                 recent_low = float(c_series.tail(10).min())
                 
                 # VOLATILITY-ADJUSTED TRAILING STOPS
                 daily_volatility = c_series.pct_change().abs().tail(14).mean()
                 dynamic_buffer = max(0.02, min(daily_volatility * 2, 0.10))
                 
-                # We want the stop below the highest structural floor
                 stop_trigger = max(sma_50, recent_low) * (1.0 - dynamic_buffer)
                 
-                # Safety check: if price crashed violently today, don't set a trailing stop above the current price
                 if stop_trigger >= current_price: 
                     stop_trigger = current_price * (1.0 - dynamic_buffer)
                     
-                # The limit order gets the same dynamic breathing room to ensure execution during a gap down
                 stop_limit = stop_trigger * (1.0 - dynamic_buffer) 
                 
                 # Risk Logic (Synced with Volatility Stops)
@@ -491,7 +488,6 @@ class BackendAPI:
                     "reason": reason
                 })
                 
-            # Sort RED (Sell) -> YELLOW (Trim) -> GREEN (Hold)
             sort_order = {"SELL": 0, "TRIM": 1, "HOLD": 2}
             results.sort(key=lambda x: sort_order.get(x["status"], 3))
             
