@@ -261,7 +261,7 @@ class BackendAPI:
             "chart_values": chart_values
         }
 
-    # --- NIGHT OWL SCANNER ALGORITHM (Dynamic Tiers) ---
+    # --- NIGHT OWL SCANNER ALGORITHM ---
     def run_swing_scanner(self, cash_available):
         try:
             # 1. DYNAMIC PORTFOLIO SIZING (The Sliding Scale)
@@ -304,7 +304,6 @@ class BackendAPI:
 
             full_universe = []
             
-            # Because of our new sliding scale, even a $1k account gets TSX access!
             if eval_cash < 500:
                 # True micro accounts stick to cheap momentum plays
                 full_universe = tsx_v_staples + ['BTE.TO', 'CPG.TO', 'ATH.TO', 'CVE.TO', 'CJ.TO']
@@ -326,10 +325,8 @@ class BackendAPI:
                 except: pass
                     
                 if eval_cash < 5000:
-                    # Blend for mid-sized accounts
                     full_universe = dynamic_tsx + tsx_v_staples
                 else:
-                    # Larger accounts prioritize main board TSX
                     full_universe = dynamic_tsx + tsx_v_staples[:15]
 
             full_universe = list(set(full_universe))
@@ -356,8 +353,9 @@ class BackendAPI:
                 current_price = float(c_series.iloc[-1])
                 is_venture = '.V' in ticker
                 
-                # NEW SHARE MINIMUM LOGIC (TSX = 1 share, TSXV = 100 shares)
-                min_shares = 100 if is_venture else 1
+                # TIERED MINIMUM SHARES LOGIC (Inside the loop!)
+                # 1 share minimum for Blue Chips, 10 share minimum for Penny Stocks
+                min_shares = 10 if is_venture else 1
                 max_allowed_price = max_position_size / min_shares
                 
                 # PRICE & SPREAD CHECK
