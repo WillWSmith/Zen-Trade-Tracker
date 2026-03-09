@@ -295,21 +295,21 @@ async function submitCash(type) {
     refreshData();
 }
 
-// --- NIGHT OWL SCANNER LOGIC --- //
+// ==========================================
+// --- NIGHT OWL SCANNER LOGIC ---
+// ==========================================
 async function openScanner() {
-    const id = document.getElementById('portfolio-select').value;
-    if (!id || id === "No Portfolios") return;
+    const cash = currentData ? currentData.total_cash : 0;
     
     document.getElementById('scanner-modal').classList.remove('hidden');
     document.getElementById('scanner-results').innerHTML = `
         <div class="col-span-3 text-center py-16 flex flex-col items-center justify-center">
-            <i class="fas fa-circle-notch fa-spin text-5xl text-indigo-400 mb-6 drop-shadow-[0_0_10px_rgba(129,140,248,0.6)]"></i>
-            <h3 class="text-white text-xl font-bold tracking-wider mb-2">Analyzing TSX Markets...</h3>
-            <p class="text-zen-gray text-sm animate-pulse">Scraping data & running Night Owl Algorithmic Strategy rules...</p>
+            <i class="fas fa-satellite-dish fa-spin text-5xl text-indigo-400 mb-6 drop-shadow-[0_0_10px_rgba(129,140,248,0.6)]"></i>
+            <h3 class="text-white text-xl font-bold tracking-wider mb-2">Scanning TSX & TSX.V...</h3>
+            <p class="text-zen-gray text-sm animate-pulse">Running institutional volume and momentum filters...</p>
         </div>`;
     
     try {
-        const cash = currentData ? currentData.total_cash : 0;
         const results = await pywebview.api.run_swing_scanner(cash);
         renderScannerResults(results);
     } catch(e) {
@@ -326,44 +326,66 @@ function renderScannerResults(results) {
     container.innerHTML = '';
     
     if (!results || results.length === 0) {
-        container.innerHTML = '<div class="col-span-3 text-center text-zen-gray py-10 text-lg border border-dashed border-white/10 rounded-xl bg-white/5">No optimal pullbacks found right now.<br><span class="text-xs">Remember: Cash is a position!</span></div>';
+        container.innerHTML = '<div class="col-span-3 text-center text-zen-gray py-10 text-lg border border-dashed border-white/10 rounded-xl bg-white/5">No setups found matching criteria.</div>';
         return;
     }
     
+    // Dynamic Color Mapping for Sectors
+    const sectorColors = {
+        'Energy': 'bg-orange-500/20 text-orange-400 border-orange-500/50',
+        'Materials': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50',
+        'Technology': 'bg-blue-500/20 text-blue-400 border-blue-500/50',
+        'Financials': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50',
+        'Healthcare': 'bg-red-500/20 text-red-400 border-red-500/50',
+        'Industrials': 'bg-stone-500/20 text-stone-400 border-stone-500/50',
+        'Unknown': 'bg-gray-500/20 text-gray-400 border-gray-500/50'
+    };
+
     results.forEach(r => {
+        if (r.ticker === "ERROR") {
+            container.innerHTML += `<div class="col-span-3 text-center text-zen-red py-2">${r.setup}</div>`;
+            return;
+        }
+
+        const sColor = sectorColors[r.sector] || 'bg-indigo-500/20 text-indigo-400 border-indigo-500/50';
+
+        let setupColor = 'bg-fuchsia-500/20 text-fuchsia-400 border-fuchsia-500/50'; // Default fallback
+        if (r.setup.includes('52-Wk')) {
+            setupColor = 'bg-rose-500/20 text-rose-400 border-rose-500/50';
+        } else if (r.setup.includes('High Vol')) {
+            setupColor = 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50'; 
+        } else if (r.setup.includes('Golden Cross')) {
+            setupColor = 'bg-amber-500/20 text-amber-400 border-amber-500/50';
+        }
+
         container.innerHTML += `
-            <div class="bg-white/5 backdrop-blur-md border border-indigo-500/30 rounded-xl p-5 hover:border-indigo-400 hover:shadow-[0_0_20px_rgba(99,102,241,0.2)] transition relative overflow-hidden flex flex-col h-full">
-                <div class="absolute top-0 right-0 bg-indigo-500/20 text-indigo-300 text-[0.65rem] font-bold px-3 py-1.5 rounded-bl-lg border-b border-l border-indigo-500/30">2:1 R/R</div>
+            <div class="bg-white/5 backdrop-blur-md border border-indigo-500/30 rounded-xl p-5 transition relative overflow-hidden flex flex-col h-full hover:border-indigo-400 hover:shadow-[0_0_20px_rgba(99,102,241,0.2)]">
                 
-                <div class="mb-4">
-                    <h3 class="text-2xl font-bold text-white mb-1 tracking-tight">${r.ticker}</h3>
-                    <p class="text-indigo-400 text-xs font-semibold uppercase tracking-wider"><i class="fas fa-check-circle mr-1 opacity-70"></i>${r.setup}</p>
+                <div class="flex justify-between items-start mb-4">
+                    <h3 class="text-2xl font-bold text-white tracking-tight">${r.ticker}</h3>
+                    
+                    <div class="flex flex-col items-end gap-1.5">
+                        <span class="px-2 py-0.5 text-[0.65rem] font-extrabold uppercase tracking-widest rounded border ${sColor} shadow-sm">${r.sector}</span>
+                        <span class="px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-wider rounded border ${setupColor} shadow-sm">${r.setup}</span>
+                    </div>
                 </div>
                 
-                <div class="space-y-2.5 text-sm tabular-nums flex-1">
+                <div class="space-y-2.5 text-sm tabular-nums flex-1 mt-1">
                     <div class="flex justify-between border-b border-white/10 pb-2">
-                        <span class="text-zen-gray">Limit Buy:</span>
-                        <span class="text-white font-bold">$${r.buy_price.toFixed(2)}</span>
+                        <span class="text-zen-gray">Buy Range:</span>
+                        <span class="text-white font-bold max-w-[100px] text-right">Under $${r.buy_price.toFixed(2)}</span>
                     </div>
                     <div class="flex justify-between border-b border-white/10 pb-2">
-                        <span class="text-zen-gray" title="Set this as your Stop Price">Stop (Trigger):</span>
+                        <span class="text-zen-gray" title="Recommended Stop Trigger">Stop Trigger:</span>
                         <span class="text-[#EF4444] font-bold">$${r.stop_trigger.toFixed(2)}</span>
                     </div>
                     <div class="flex justify-between border-b border-white/10 pb-2">
-                        <span class="text-zen-gray" title="Set this as your Limit Price">Stop (Limit):</span>
+                        <span class="text-zen-gray" title="Recommended Stop Limit">Stop Limit:</span>
                         <span class="text-[#EF4444] font-bold opacity-80">$${r.stop_limit.toFixed(2)}</span>
                     </div>
-                    <div class="flex justify-between border-b border-white/10 pb-2">
-                        <span class="text-zen-gray">Take Profit:</span>
-                        <span class="text-zen-green font-bold">$${r.take_profit.toFixed(2)}</span>
-                    </div>
-                </div>
-                
-                <div class="mt-5 bg-black/50 rounded-lg p-3 border border-white/5 flex-shrink-0">
-                    <p class="text-[0.65rem] text-zen-gray uppercase tracking-widest mb-1 font-bold">Suggested Sizing</p>
-                    <div class="flex justify-between items-baseline">
-                        <span class="text-xl font-extrabold text-white">${r.shares} <span class="text-sm font-normal text-zen-gray">Shares</span></span>
-                        <span class="text-indigo-300 text-xs font-bold bg-indigo-500/10 px-2 py-1 rounded">Cost: $${r.total_cost.toFixed(2)}</span>
+                    <div class="flex justify-between pt-1">
+                        <span class="text-zen-gray">Target:</span>
+                        <span class="text-[#22C55E] font-bold">$${r.take_profit.toFixed(2)}</span>
                     </div>
                 </div>
             </div>
@@ -371,7 +393,9 @@ function renderScannerResults(results) {
     });
 }
 
-// --- PORTFOLIO AUDITOR LOGIC --- //
+// ==========================================
+// --- PORTFOLIO AUDITOR LOGIC ---
+// ==========================================
 async function openAuditor() {
     if (!currentData || !currentData.holdings || currentData.holdings.length === 0) {
         alert("You don't have any active stock holdings to audit.");
@@ -381,31 +405,7 @@ async function openAuditor() {
     document.getElementById('auditor-modal').classList.remove('hidden');
     document.getElementById('auditor-results').innerHTML = `
         <div class="col-span-3 text-center py-16 flex flex-col items-center justify-center">
-            <i class="fas fa-circle-notch fa-spin text-5xl text-teal-400 mb-6 drop-shadow-[0_0_10px_rgba(45,212,191,0.6)]"></i>
-            <h3 class="text-white text-xl font-bold tracking-wider mb-2">Auditing Current Holdings...</h3>
-            <p class="text-zen-gray text-sm animate-pulse">Calculating Trailing Stops & Trend Health...</p>
-        </div>`;
-    
-    try {
-        const activeTickers = currentData.holdings.map(h => h.ticker);
-        const results = await pywebview.api.audit_portfolio(activeTickers);
-        renderAuditorResults(results);
-    } catch(e) {
-        document.getElementById('auditor-results').innerHTML = `<div class="col-span-3 text-center text-zen-red py-10 font-bold">Auditor Error: ${e}</div>`;
-    }
-}
-
-// --- PORTFOLIO AUDITOR LOGIC --- //
-async function openAuditor() {
-    if (!currentData || !currentData.holdings || currentData.holdings.length === 0) {
-        alert("You don't have any active stock holdings to audit.");
-        return;
-    }
-    
-    document.getElementById('auditor-modal').classList.remove('hidden');
-    document.getElementById('auditor-results').innerHTML = `
-        <div class="col-span-3 text-center py-16 flex flex-col items-center justify-center">
-            <i class="fas fa-circle-notch fa-spin text-5xl text-teal-400 mb-6 drop-shadow-[0_0_10px_rgba(45,212,191,0.6)]"></i>
+            <i class="fas fa-shield-halved text-5xl text-teal-400 mb-6 animate-pulse drop-shadow-[0_0_10px_rgba(45,212,191,0.6)]"></i>
             <h3 class="text-white text-xl font-bold tracking-wider mb-2">Auditing Current Holdings...</h3>
             <p class="text-zen-gray text-sm animate-pulse">Calculating Trailing Stops & Trend Health...</p>
         </div>`;
@@ -438,20 +438,28 @@ function renderAuditorResults(results) {
             return;
         }
 
-        // Setup the color coding for the border
         let borderColor = 'border-teal-500/30 hover:border-teal-400 hover:shadow-[0_0_20px_rgba(20,184,166,0.2)]';
-        if (r.status === 'SELL') borderColor = 'border-red-500/50 hover:border-red-400 hover:shadow-[0_0_20px_rgba(239,68,68,0.2)]';
-        if (r.status === 'TRIM') borderColor = 'border-yellow-500/50 hover:border-yellow-400 hover:shadow-[0_0_20px_rgba(234,179,8,0.2)]';
+        let statusStyle = 'bg-green-500/20 text-green-400 border-green-500/50'; 
+
+        if (r.status === 'SELL') {
+            borderColor = 'border-red-500/50 hover:border-red-400 hover:shadow-[0_0_20px_rgba(239,68,68,0.2)]';
+            statusStyle = 'bg-red-500/20 text-red-400 border-red-500/50';
+        } else if (r.status === 'TRIM') {
+            borderColor = 'border-yellow-500/50 hover:border-yellow-400 hover:shadow-[0_0_20px_rgba(234,179,8,0.2)]';
+            statusStyle = 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50';
+        }
 
         container.innerHTML += `
             <div class="bg-white/5 backdrop-blur-md border ${borderColor} rounded-xl p-5 transition relative overflow-hidden flex flex-col h-full">
                 
                 <div class="mb-4">
-                    <div class="flex justify-between items-center mb-1">
+                    <div class="flex justify-between items-start mb-1">
                         <h3 class="text-2xl font-bold text-white tracking-tight">${r.ticker}</h3>
-                        <span class="${r.color} font-black text-lg tracking-wider">${r.status}</span>
+                        <div class="flex flex-col items-end gap-1.5">
+                            <span class="px-2 py-0.5 text-[0.65rem] font-extrabold uppercase tracking-widest rounded border ${statusStyle} shadow-sm">${r.status}</span>
+                        </div>
                     </div>
-                    <p class="${r.color} text-xs font-semibold uppercase tracking-wider opacity-80">${r.reason}</p>
+                    <p class="${r.color} text-xs font-semibold uppercase tracking-wider opacity-80 mt-1">${r.reason}</p>
                 </div>
                 
                 <div class="space-y-2.5 text-sm tabular-nums flex-1 mt-2">
