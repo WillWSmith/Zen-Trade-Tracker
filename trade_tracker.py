@@ -401,13 +401,13 @@ class BackendAPI:
                                 except:
                                     sector = 'Unknown'
 
-                                # CLEAN SETUP TAG LOGIC
+                                # CLEAN SETUP TEXT (No Emojis)
                                 if current_price >= (high_52wk * 0.90):
-                                    setup_tag = "🔥 52-Wk High Pullback"
+                                    setup_tag = "52-Wk High Pullback"
                                 elif today_vol > (avg_vol * 1.5):
-                                    setup_tag = "🌊 High Vol Drop"
+                                    setup_tag = "High Vol Drop"
                                 else:
-                                    setup_tag = "🛡️ Golden Cross Pullback"
+                                    setup_tag = "Golden Cross Pullback"
                                 
                                 suggestions.append({
                                     "ticker": ticker,
