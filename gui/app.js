@@ -330,15 +330,17 @@ function renderScannerResults(results) {
         return;
     }
     
-    // Dynamic Color Mapping for Sectors
+    // ==========================================
+    // --- NEW VIBRANT SECTOR PALETTE ---
+    // ==========================================
     const sectorColors = {
-        'Energy': 'bg-orange-500/20 text-orange-400 border-orange-500/50',
-        'Materials': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50',
-        'Technology': 'bg-blue-500/20 text-blue-400 border-blue-500/50',
-        'Financials': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50',
-        'Healthcare': 'bg-red-500/20 text-red-400 border-red-500/50',
-        'Industrials': 'bg-stone-500/20 text-stone-400 border-stone-500/50',
-        'Unknown': 'bg-gray-500/20 text-gray-400 border-gray-500/50'
+        'Energy':      'bg-[#FF5722] text-white border border-[#FFAB91]',       
+        'Materials':   'bg-[#FBC02D] text-black font-black border border-[#FFF9C4]', 
+        'Technology':  'bg-[#00BCD4] text-black font-black border border-[#B2EBF2]', 
+        'Financials':  'bg-[#4CAF50] text-black font-black border border-[#C8E6C9]', 
+        'Healthcare':  'bg-[#E91E63] text-white border border-[#F8BBD0]',       
+        'Industrials': 'bg-[#673AB7] text-white border border-[#D1C4E9]',       
+        'Unknown':     'bg-[#9E9E9E] text-black font-black border border-[#F5F5F5]'  
     };
 
     results.forEach(r => {
@@ -347,39 +349,42 @@ function renderScannerResults(results) {
             return;
         }
 
-        const sColor = sectorColors[r.sector] || 'bg-indigo-500/20 text-indigo-400 border-indigo-500/50';
+        const sColor = sectorColors[r.sector] || 'bg-indigo-600 text-white border border-indigo-400';
 
-        let setupColor = 'bg-fuchsia-500/20 text-fuchsia-400 border-fuchsia-500/50'; // Default fallback
+        // ==========================================
+        // --- NEW BRIGHTER SETUP PALETTE ---
+        // ==========================================
+        let setupColor = 'bg-fuchsia-600 text-white border border-fuchsia-400'; 
         if (r.setup.includes('52-Wk')) {
-            setupColor = 'bg-rose-500/20 text-rose-400 border-rose-500/50';
+            setupColor = 'bg-rose-600 text-white border border-rose-300'; 
         } else if (r.setup.includes('High Vol')) {
-            setupColor = 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50'; 
+            setupColor = 'bg-sky-500 text-white border border-sky-200';   
         } else if (r.setup.includes('Golden Cross')) {
-            setupColor = 'bg-amber-500/20 text-amber-400 border-amber-500/50';
+            setupColor = 'bg-yellow-400 text-black font-black border border-yellow-100'; 
         }
 
         container.innerHTML += `
             <div class="bg-white/5 backdrop-blur-md border border-indigo-500/30 rounded-xl p-5 transition relative overflow-hidden flex flex-col h-full hover:border-indigo-400 hover:shadow-[0_0_20px_rgba(99,102,241,0.2)]">
                 
                 <div class="flex justify-between items-start mb-4">
-                    <h3 class="text-2xl font-bold text-white tracking-tight">${r.ticker}</h3>
-                    
-                    <div class="flex flex-col items-end gap-1.5">
-                        <span class="px-2 py-0.5 text-[0.65rem] font-extrabold uppercase tracking-widest rounded border ${sColor} shadow-sm">${r.sector}</span>
-                        <span class="px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-wider rounded border ${setupColor} shadow-sm">${r.setup}</span>
+                    <div class="flex flex-col items-start gap-1.5">
+                        <h3 class="text-3xl font-extrabold text-white tracking-tight leading-none">${r.ticker}</h3>
+                        <span class="px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-widest rounded border shadow-sm opacity-90 ${setupColor}">${r.setup}</span>
                     </div>
+                    
+                    <span class="px-2.5 py-1 text-[0.7rem] font-extrabold uppercase tracking-wider rounded border shadow-sm ${sColor}">${r.sector}</span>
                 </div>
                 
-                <div class="space-y-2.5 text-sm tabular-nums flex-1 mt-1">
-                    <div class="flex justify-between border-b border-white/10 pb-2">
+                <div class="space-y-2.5 text-sm tabular-nums flex-1 mt-1 border-t border-white/10 pt-4">
+                    <div class="flex justify-between border-b border-white/5 pb-2">
                         <span class="text-zen-gray">Buy Range:</span>
                         <span class="text-white font-bold max-w-[100px] text-right">Under $${r.buy_price.toFixed(2)}</span>
                     </div>
-                    <div class="flex justify-between border-b border-white/10 pb-2">
+                    <div class="flex justify-between border-b border-white/5 pb-2">
                         <span class="text-zen-gray" title="Recommended Stop Trigger">Stop Trigger:</span>
                         <span class="text-[#EF4444] font-bold">$${r.stop_trigger.toFixed(2)}</span>
                     </div>
-                    <div class="flex justify-between border-b border-white/10 pb-2">
+                    <div class="flex justify-between border-b border-white/5 pb-2">
                         <span class="text-zen-gray" title="Recommended Stop Limit">Stop Limit:</span>
                         <span class="text-[#EF4444] font-bold opacity-80">$${r.stop_limit.toFixed(2)}</span>
                     </div>
