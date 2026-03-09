@@ -436,3 +436,120 @@ class BackendAPI:
             close_data = pd.DataFrame()
             if len(tickers) == 1:
                 if 'Close' in data:
+                    close_data[tickers[0]] = data['Close']
+            else:
+                if 'Close' in data:
+                    close_data = data['Close']
+                    
+            if close_data.empty: return []
+
+            results = []
+            for ticker in tickers:
+                if ticker not in close_data.columns: continue
+                
+                c_series = close_data[ticker].dropna()
+                if len(c_series) < 50: continue
+                
+                current_price = float(c_series.iloc[-1])
+                sma_50 = float(c_series.tail(50).mean())
+                recent_low = float(c_series.tail(10).min())
+                
+                # VOLATILITY-ADJUSTED TRAILING STOPS
+                daily_volatility = c_series.pct_change().abs().tail(14).mean()
+                dynamic_buffer = max(0.02, min(daily_volatility * 2, 0.10))
+                
+                stop_trigger = max(sma_50, recent_low) * (1.0 - dynamic_buffer)
+                
+                if stop_trigger >= current_price: 
+                    stop_trigger = current_price * (1.0 - dynamic_buffer)
+                    
+                stop_limit = stop_trigger * (1.0 - dynamic_buffer) 
+                
+                # Risk Logic (Synced with Volatility Stops)
+                if current_price <= stop_trigger:
+                    status = "SELL"
+                    color = "text-[#EF4444]" # Red
+                    reason = "Stop Loss Breached"
+                elif current_price < sma_50:
+                    status = "HOLD"
+                    color = "text-[#EAB308]" # Yellow warning
+                    reason = "Testing Volatility Support"
+                elif current_price > (sma_50 * 1.25):
+                    status = "TRIM"
+                    color = "text-[#EAB308]" # Yellow
+                    reason = "Overextended (>25% Above 50 SMA)"
+                else:
+                    status = "HOLD"
+                    color = "text-[#22C55E]" # Green
+                    reason = "Trend Healthy"
+                    
+                results.append({
+                    "ticker": ticker,
+                    "current_price": current_price,
+                    "stop_trigger": stop_trigger,
+                    "stop_limit": stop_limit,
+                    "status": status,
+                    "color": color,
+                    "reason": reason
+                })
+                
+            sort_order = {"SELL": 0, "TRIM": 1, "HOLD": 2}
+            results.sort(key=lambda x: sort_order.get(x["status"], 3))
+            
+            return results
+        except Exception as e:
+            return [{"ticker": "ERROR", "reason": str(e)}]
+    
+    def export_csv(self):
+        if self.window:
+            dest_path = self.window.create_file_dialog(webview.SAVE_DIALOG, directory='', save_filename='ZenTrades.csv')
+            if dest_path:
+                conn = sqlite3.connect(DB_PATH)
+                trades = conn.execute("SELECT portfolios.name, ticker, type, shares, price, date FROM trades JOIN portfolios ON trades.portfolio_id = portfolios.id").fetchall()
+                conn.close()
+                with open(dest_path[0], 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(['Portfolio', 'Ticker', 'Type', 'Shares', 'Price', 'Date'])
+                    writer.writerows(trades)
+                self.window.evaluate_js('alert("CSV Exported Successfully!")')
+
+    def import_csv(self):
+        if self.window:
+            src_path = self.window.create_file_dialog(webview.OPEN_DIALOG, file_types=('CSV Files (*.csv)',))
+            if src_path:
+                try:
+                    df = pd.read_csv(src_path[0])
+                    conn = sqlite3.connect(DB_PATH)
+                    conn.execute("DELETE FROM trades")
+                    conn.execute("DELETE FROM portfolios")
+                    
+                    portfolios = df['Portfolio'].unique()
+                    for p in portfolios:
+                        conn.execute("INSERT INTO portfolios (name) VALUES (?)", (p,))
+                    
+                    for index, row in df.iterrows():
+                        pid = conn.execute("SELECT id FROM portfolios WHERE name=?", (row['Portfolio'],)).fetchone()[0]
+                        conn.execute("INSERT INTO trades (portfolio_id, ticker, type, shares, price, date) VALUES (?, ?, ?, ?, ?, ?)",
+                                     (pid, row['Ticker'], row['Type'], row['Shares'], row['Price'], row['Date']))
+                    conn.commit()
+                    conn.close()
+                    self.window.evaluate_js('loadPortfolios(); alert("CSV Imported Successfully!");')
+                except Exception as e:
+                    self.window.evaluate_js(f'alert("Import Error: Make sure headers are Portfolio, Ticker, Type, Shares, Price, Date");')
+
+def get_entrypoint():
+    if hasattr(sys, '_MEIPASS'): return os.path.join(sys._MEIPASS, 'gui', 'index.html')
+    return os.path.join(os.path.dirname(__file__), 'gui', 'index.html')
+
+if __name__ == '__main__':
+    init_db()
+    try: import pyi_splash; pyi_splash.close()
+    except ImportError: pass
+
+    api = BackendAPI()
+    window = webview.create_window(
+        'Zen Trade Tracker - v1.0.0', url=get_entrypoint(), js_api=api,
+        width=1350, height=850, background_color='#121214', resizable=True
+    )
+    api.window = window
+    webview.start()
