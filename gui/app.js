@@ -352,24 +352,27 @@ function renderScannerResults(results) {
         const sColor = sectorColors[r.sector] || 'bg-indigo-600 text-white border border-indigo-400';
 
         // ==========================================
-        // --- NEW BRIGHTER SETUP PALETTE ---
+        // --- CLEAN ICON + TEXT SETUP INDICATOR ---
         // ==========================================
-        let setupColor = 'bg-fuchsia-600 text-white border border-fuchsia-400'; 
+        let setupIcon = '<i class="fas fa-bolt text-fuchsia-400"></i>'; 
         if (r.setup.includes('52-Wk')) {
-            setupColor = 'bg-rose-600 text-white border border-rose-300'; 
+            setupIcon = '<i class="fas fa-fire text-rose-500"></i>'; 
         } else if (r.setup.includes('High Vol')) {
-            setupColor = 'bg-sky-500 text-white border border-sky-200';   
+            setupIcon = '<i class="fas fa-water text-sky-400"></i>';   
         } else if (r.setup.includes('Golden Cross')) {
-            setupColor = 'bg-yellow-400 text-black font-black border border-yellow-100'; 
+            setupIcon = '<i class="fas fa-shield-halved text-yellow-400"></i>'; 
         }
 
         container.innerHTML += `
             <div class="bg-white/5 backdrop-blur-md border border-indigo-500/30 rounded-xl p-5 transition relative overflow-hidden flex flex-col h-full hover:border-indigo-400 hover:shadow-[0_0_20px_rgba(99,102,241,0.2)]">
                 
                 <div class="flex justify-between items-start mb-4">
-                    <div class="flex flex-col items-start gap-1.5">
+                    <div class="flex flex-col items-start gap-1">
                         <h3 class="text-3xl font-extrabold text-white tracking-tight leading-none">${r.ticker}</h3>
-                        <span class="px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-widest rounded border shadow-sm opacity-90 ${setupColor}">${r.setup}</span>
+                        <div class="flex items-center text-[0.65rem] font-semibold text-zen-gray uppercase tracking-wider mt-1">
+                            ${setupIcon}
+                            <span class="ml-1.5 opacity-80">${r.setup}</span>
+                        </div>
                     </div>
                     
                     <span class="px-2.5 py-1 text-[0.7rem] font-extrabold uppercase tracking-wider rounded border shadow-sm ${sColor}">${r.sector}</span>
