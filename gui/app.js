@@ -378,10 +378,10 @@ function renderScannerResults(results) {
                     <span class="px-2.5 py-1 text-[0.7rem] font-extrabold uppercase tracking-wider rounded border shadow-sm ${sColor}">${r.sector}</span>
                 </div>
                 
-                <div class="space-y-2.5 text-sm tabular-nums flex-1 mt-1 border-t border-white/10 pt-4">
+<div class="space-y-2.5 text-sm tabular-nums flex-1 mt-1 border-t border-white/10 pt-4">
                     <div class="flex justify-between border-b border-white/5 pb-2">
-                        <span class="text-zen-gray">Buy Range:</span>
-                        <span class="text-white font-bold max-w-[100px] text-right">Under $${r.buy_price.toFixed(2)}</span>
+                        <span class="text-zen-gray">Buy Limit:</span>
+                        <span class="text-white font-bold max-w-[100px] text-right">$${r.buy_price.toFixed(2)}</span>
                     </div>
                     <div class="flex justify-between border-b border-white/5 pb-2">
                         <span class="text-zen-gray" title="Recommended Stop Trigger">Stop Trigger:</span>
