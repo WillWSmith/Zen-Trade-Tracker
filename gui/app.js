@@ -135,7 +135,9 @@ function renderHoldings() {
         const colorClass = h.unreal_dlr >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]';
         const prefix = h.unreal_dlr >= 0 ? '+' : '';
         tr.innerHTML = `
-            <td class="px-2 py-3 font-semibold text-white">${h.ticker}</td>
+            <td class="px-2 py-3 font-bold cursor-pointer hover:text-zen-green transition" onclick="setTickerInput('${h.ticker}')" title="Click to queue trade">
+    ${h.ticker}
+</td>
             <td class="px-2 py-3 text-right text-zen-green bg-zen-green/5">${h.allocation.toFixed(1)}%</td>
             <td class="px-2 py-3 text-right">${h.shares.toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
             <td class="px-2 py-3 text-right">$${h.avg_cost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 4})}</td>
@@ -487,4 +489,19 @@ function renderAuditorResults(results) {
             </div>
         `;
     });
+}
+
+// ==========================================
+// --- UI WORKFLOW HELPERS ---
+// ==========================================
+function setTickerInput(ticker) {
+    const input = document.getElementById('ticker-input');
+    input.value = ticker;
+    input.focus();
+    
+    // Quick flash animation to confirm action
+    input.classList.add('border-zen-green', 'bg-zen-green/20');
+    setTimeout(() => {
+        input.classList.remove('border-zen-green', 'bg-zen-green/20');
+    }, 300);
 }
