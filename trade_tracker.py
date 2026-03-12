@@ -25,13 +25,19 @@ def init_db():
 class BackendAPI:
     def __init__(self):
         self.window = None
+        self.is_maximized = False
 
     def minimize(self):
         if self.window: self.window.minimize()
 
-    def maximize(self):
+    def toggle_maximize(self):
         if self.window:
-            self.window.toggle_fullscreen()
+            if self.is_maximized:
+                self.window.restore()
+                self.is_maximized = False
+            else:
+                self.window.maximize()
+                self.is_maximized = True
 
     def close_app(self):
         if self.window: self.window.destroy()
@@ -563,7 +569,6 @@ if __name__ == '__main__':
         background_color='#0a0a0c', 
         resizable=True,
         frameless=True,       
-        maximized=True 
     )
     api.window = window
     webview.start()
