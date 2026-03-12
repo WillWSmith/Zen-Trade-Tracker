@@ -560,9 +560,10 @@ if __name__ == '__main__':
     window = webview.create_window(
         'Zen Trade Scanner', url=get_entrypoint(), js_api=api,
         width=1350, height=850, 
-        background_color='#0a0a0c', # Matches your Zen Black sidebar
+        background_color='#0a0a0c', 
         resizable=True,
-        frameless=True # <--- This deletes the clunky Windows OS border
+        frameless=True,       # Deletes the OS border
+        maximized=True        # <--- Forces the app to open fully maximized
     )
     api.window = window
     webview.start()
