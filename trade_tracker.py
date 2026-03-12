@@ -309,10 +309,11 @@ class BackendAPI:
         }
 
     # --- ZEN SCANNER ALGORITHM (Tiered Risk Models) ---
-    def run_swing_scanner(self, cash_available):
+    def run_swing_scanner(self, cash_available, total_account=100.0):
         try:
-            # Baseline minimum for math calculations
-            eval_cash = max(cash_available, 100.0) 
+            # Baseline minimums for math safety
+            eval_cash = max(cash_available, 5.0) 
+            eval_account = max(total_account, 100.0)
                 
             full_universe = []
             tv_url = "https://scanner.tradingview.com/canada/scan"
@@ -431,18 +432,28 @@ class BackendAPI:
                             # 2. HARD MINIMUM STOP LIMIT GAP
                             stop_limit = calculate_stop_gap(current_price, stop_trigger)
                             
-                            # 3. POSITION SIZING (2% Portfolio Risk)
+                            # 3. POSITION SIZING
                             risk_per_share = current_price - stop_trigger
                             if risk_per_share <= 0: continue
                             
-                            risk_amount = eval_cash * 0.02
-                            shares = int(risk_amount / risk_per_share)
+                            if eval_account < 500:
+                                # TIER 1: Zen 2-Slot System (Aggressive Growth)
+                                max_position_value = eval_account * 0.50
+                                shares = int(max_position_value / current_price)
+                            elif eval_account < 2500:
+                                # TIER 2: Transition 4-Slot (Balanced)
+                                max_position_value = eval_account * 0.25
+                                shares = int(max_position_value / current_price)
+                            else:
+                                # TIER 3: Pro Mode (Strict Capital Preservation)
+                                risk_amount = eval_account * 0.02
+                                shares = int(risk_amount / risk_per_share)
                             
-                            # Cap by available cash
+                            # CRITICAL FAILSAFE: Never suggest spending more cash than is actually available
                             max_shares_affordable = int(eval_cash / current_price)
                             shares = min(shares, max_shares_affordable)
                             
-                            if shares <= 0: continue # Cannot afford even 1 share with risk model
+                            if shares <= 0: continue # Cannot afford even 1 share
                             
                             # 4. 2:1 REWARD/RISK TARGET
                             take_profit = round(current_price + (risk_per_share * 2), 2)
