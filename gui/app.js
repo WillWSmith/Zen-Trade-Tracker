@@ -386,6 +386,10 @@ function renderScannerResults(results) {
                         <span class="text-white font-bold max-w-[100px] text-right">$${r.buy_price.toFixed(2)}</span>
                     </div>
                     <div class="flex justify-between border-b border-white/5 pb-2">
+                        <span class="text-zen-gray">Position Size:</span>
+                        <span class="text-white font-bold">${r.shares} <span class="text-[0.65rem] opacity-60 font-normal">($${r.total_cost.toFixed(2)})</span></span>
+                    </div>
+                    <div class="flex justify-between border-b border-white/5 pb-2">
                         <span class="text-zen-gray" title="Recommended Stop Trigger">Stop Trigger:</span>
                         <span class="text-[#EF4444] font-bold">$${r.stop_trigger.toFixed(2)}</span>
                     </div>
