@@ -41,7 +41,7 @@ class BackendAPI:
 
     def close_app(self):
         if self.window: self.window.destroy()
-    
+
     def get_portfolios(self):
         conn = sqlite3.connect(DB_PATH)
         portfolios = {name: pid for pid, name in conn.execute("SELECT id, name FROM portfolios").fetchall()}
@@ -277,31 +277,22 @@ class BackendAPI:
             "chart_values": chart_values
         }
 
-    # --- NIGHT OWL SCANNER ALGORITHM ---
+    # --- ZEN SCANNER ALGORITHM (ADX & ATR Upgraded) ---
     def run_swing_scanner(self, cash_available):
         try:
-            # 1. DYNAMIC PORTFOLIO SIZING (The Sliding Scale)
             eval_cash = max(cash_available, 5.0) 
             
-            if eval_cash < 500:
-                max_position_size = eval_cash * 1.0    # Micro: 100% Allocation
-            elif eval_cash < 2500:
-                max_position_size = eval_cash * 0.50   # Small: 50% Allocation
-            elif eval_cash < 10000:
-                max_position_size = eval_cash * 0.33   # Medium: 33% Allocation
-            else:
-                max_position_size = eval_cash * 0.20   # Large: 20% Allocation
+            if eval_cash < 500: max_position_size = eval_cash * 1.0    
+            elif eval_cash < 2500: max_position_size = eval_cash * 0.50   
+            elif eval_cash < 10000: max_position_size = eval_cash * 0.33   
+            else: max_position_size = eval_cash * 0.20   
                 
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-            
-            # 2. Dynamic TradingView Scrape (TSX.V)
             tsx_v_staples = [
                 'HIVE.V', 'BITF.V', 'NILI.V', 'PMN.V', 'SGN.V', 'LI.V', 'EU.V', 'CRE.V', 
                 'ISO.V', 'AFM.V', 'VLI.V', 'GGD.V', 'RECO.V', 'SLI.V', 'FL.V', 'NGD.V'
             ]
             
             tv_url = "https://scanner.tradingview.com/canada/scan"
-            
             try:
                 v_payload = {
                     "filter": [{"left": "exchange", "operation": "equal", "right": "TSXV"}],
@@ -319,7 +310,6 @@ class BackendAPI:
             except: pass
 
             full_universe = []
-            
             if eval_cash < 500:
                 full_universe = tsx_v_staples + ['BTE.TO', 'CPG.TO', 'ATH.TO', 'CVE.TO', 'CJ.TO']
             else:
@@ -339,20 +329,18 @@ class BackendAPI:
                         dynamic_tsx = [f"{item['d'][0].replace('.', '-')}.TO" for item in t_resp.json().get("data", []) if item.get("d")]
                 except: pass
                     
-                if eval_cash < 5000:
-                    full_universe = dynamic_tsx + tsx_v_staples
-                else:
-                    full_universe = dynamic_tsx + tsx_v_staples[:15]
+                if eval_cash < 5000: full_universe = dynamic_tsx + tsx_v_staples
+                else: full_universe = dynamic_tsx + tsx_v_staples[:15]
 
-            full_universe = list(set(full_universe))
-            if len(full_universe) > 350:
-                full_universe = full_universe[:350]
+            full_universe = list(set(full_universe))[:350]
 
-            # 3. Download 1 FULL YEAR of data
+            # We need High, Low, Close for ADX/ATR math
             data = yf.download(full_universe, period="1y", progress=False)
             if 'Close' not in data or 'Volume' not in data: return []
                 
             close_data = data['Close']
+            high_data = data['High']
+            low_data = data['Low']
             volume_data = data['Volume']
             
             suggestions = []
@@ -361,6 +349,8 @@ class BackendAPI:
                 if ticker not in close_data.columns: continue
                     
                 c_series = close_data[ticker].dropna()
+                h_series = high_data[ticker].dropna()
+                l_series = low_data[ticker].dropna()
                 v_series = volume_data[ticker].dropna()
                 
                 if len(c_series) < 200: continue
@@ -368,23 +358,46 @@ class BackendAPI:
                 current_price = float(c_series.iloc[-1])
                 is_venture = '.V' in ticker
                 
-                # TIERED MINIMUM SHARES LOGIC
                 min_shares = 10 if is_venture else 1
                 max_allowed_price = max_position_size / min_shares
-                
                 if current_price > max_allowed_price or current_price < 0.15: continue 
                 
                 avg_vol = float(v_series.tail(20).mean())
                 today_vol = float(v_series.iloc[-1])
-                min_adv = 250000 if is_venture else 100000
                 
-                if avg_vol < min_adv: continue
+                # 1. DOLLAR VOLUME LIQUIDITY GUARD
+                dollar_volume = avg_vol * current_price
+                if dollar_volume < 100000: continue
+                
+                # 2. ATR & ADX CALCULATION (Pandas Math)
+                tr1 = h_series - l_series
+                tr2 = (h_series - c_series.shift(1)).abs()
+                tr3 = (l_series - c_series.shift(1)).abs()
+                tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+                
+                plus_dm = h_series.diff()
+                minus_dm = -l_series.diff()
+                plus_dm[(plus_dm < 0) | (plus_dm < minus_dm)] = 0
+                minus_dm[(minus_dm < 0) | (minus_dm < plus_dm)] = 0
+                
+                atr_14 = tr.rolling(14).mean()
+                atr_sum = tr.rolling(14).sum()
+                
+                plus_di = 100 * (plus_dm.rolling(14).sum() / atr_sum)
+                minus_di = 100 * (minus_dm.rolling(14).sum() / atr_sum)
+                dx = (plus_di - minus_di).abs() / (plus_di + minus_di).abs() * 100
+                adx = dx.rolling(14).mean()
+                
+                current_adx = float(adx.iloc[-1])
+                current_atr = float(atr_14.iloc[-1])
+                
+                # 3. MOMENTUM FILTER (ADX > 25)
+                if pd.isna(current_adx) or current_adx < 25: continue
                 
                 sma_200 = float(c_series.tail(200).mean())
                 sma_50 = float(c_series.tail(50).mean())
                 sma_10 = float(c_series.tail(10).mean())
-                recent_low = float(c_series.tail(10).min())
-                high_52wk = float(c_series.max())
+                high_52wk = float(h_series.tail(252).max())
                 
                 if current_price < (high_52wk * 0.75): continue
                 
@@ -392,11 +405,13 @@ class BackendAPI:
                     if current_price > sma_50 and current_price < (sma_50 * 1.20):
                         if current_price < sma_10:
                             
-                            daily_volatility = c_series.pct_change().abs().tail(14).mean()
-                            dynamic_buffer = max(0.02, min(daily_volatility * 2, 0.10))
+                            # 4. VOLATILITY STOP WITH DYNAMIC CAPS
+                            cap = 0.15 if current_price < 1.00 else 0.10
+                            raw_risk_pct = (current_atr * 2) / current_price
+                            dynamic_buffer = min(raw_risk_pct, cap)
                             
-                            stop_trigger = min(sma_50, recent_low) * (1.0 - dynamic_buffer) 
-                            stop_limit = stop_trigger * (1.0 - dynamic_buffer) 
+                            stop_trigger = sma_50 * (1.0 - dynamic_buffer)
+                            stop_limit = stop_trigger * 0.98 
                             
                             risk = current_price - stop_trigger
                             if risk <= 0: continue
@@ -405,8 +420,6 @@ class BackendAPI:
                             shares = int(max_position_size / current_price)
                             
                             if shares >= min_shares:
-                                
-                                # ISOLATED SECTOR LOGIC
                                 try:
                                     sector_raw = yf.Ticker(ticker).info.get('sector', 'Unknown')
                                     if sector_raw == 'Basic Materials': sector = 'Materials'
@@ -414,16 +427,11 @@ class BackendAPI:
                                     elif sector_raw == 'Consumer Cyclical': sector = 'Cyclical'
                                     elif sector_raw == 'Communication Services': sector = 'Comm Services'
                                     else: sector = sector_raw
-                                except:
-                                    sector = 'Unknown'
+                                except: sector = 'Unknown'
 
-                                # CLEAN SETUP TEXT (No Emojis)
-                                if current_price >= (high_52wk * 0.90):
-                                    setup_tag = "52-Wk High Pullback"
-                                elif today_vol > (avg_vol * 1.5):
-                                    setup_tag = "High Vol Drop"
-                                else:
-                                    setup_tag = "Golden Cross Pullback"
+                                if current_price >= (high_52wk * 0.90): setup_tag = "52-Wk High Pullback"
+                                elif today_vol > (avg_vol * 1.5): setup_tag = "High Vol Drop"
+                                else: setup_tag = "Golden Cross Pullback"
                                 
                                 suggestions.append({
                                     "ticker": ticker,
@@ -434,69 +442,62 @@ class BackendAPI:
                                     "shares": shares,
                                     "total_cost": shares * current_price,
                                     "setup": setup_tag,
-                                    "sector": sector
+                                    "sector": sector,
+                                    "adx": current_adx # Sort by momentum
                                 })
                                 
-            suggestions.sort(key=lambda x: (x['buy_price'] - x['stop_trigger']) / x['buy_price'])
+            # SORT BY PURE MOMENTUM INSTEAD OF TIGHTEST STOP
+            suggestions.sort(key=lambda x: x['adx'], reverse=True)
             return suggestions[:3] 
             
         except Exception as e:
-            return [{"ticker": "ERROR", "buy_price": 0, "stop_trigger": 0, "stop_limit": 0, "take_profit": 0, "shares": 0, "total_cost": 0, "setup": str(e), "sector": ""}]
+            return [{"ticker": "ERROR", "buy_price": 0, "stop_trigger": 0, "stop_limit": 0, "take_profit": 0, "shares": 0, "total_cost": 0, "setup": str(e), "sector": "", "adx": 0}]
 
-    # --- PORTFOLIO AUDITOR ALGORITHM ---
+    # --- PORTFOLIO AUDITOR ALGORITHM (High-Water Mark Upgraded) ---
     def audit_portfolio(self, tickers):
         if not tickers: return []
         try:
             data = yf.download(tickers, period="1y", progress=False)
-            
             close_data = pd.DataFrame()
+            high_data = pd.DataFrame()
+            
             if len(tickers) == 1:
-                if 'Close' in data:
-                    close_data[tickers[0]] = data['Close']
+                if 'Close' in data: close_data[tickers[0]] = data['Close']
+                if 'High' in data: high_data[tickers[0]] = data['High']
             else:
-                if 'Close' in data:
-                    close_data = data['Close']
+                if 'Close' in data: close_data = data['Close']
+                if 'High' in data: high_data = data['High']
                     
             if close_data.empty: return []
 
             results = []
             for ticker in tickers:
-                if ticker not in close_data.columns: continue
+                if ticker not in close_data.columns or ticker not in high_data.columns: continue
                 
                 c_series = close_data[ticker].dropna()
+                h_series = high_data[ticker].dropna()
                 if len(c_series) < 50: continue
                 
                 current_price = float(c_series.iloc[-1])
                 sma_50 = float(c_series.tail(50).mean())
-                recent_low = float(c_series.tail(10).min())
+                ema_8 = float(c_series.ewm(span=8, adjust=False).mean().iloc[-1])
+                peak_price = float(h_series.tail(20).max()) # High-Water mark of last month
                 
-                # VOLATILITY-ADJUSTED TRAILING STOPS
-                daily_volatility = c_series.pct_change().abs().tail(14).mean()
-                dynamic_buffer = max(0.02, min(daily_volatility * 2, 0.10))
+                # HIGH WATER TRAILING STOP LOGIC
+                stop_trigger = max(sma_50, ema_8, peak_price * 0.90)
+                stop_limit = stop_trigger * 0.98 
                 
-                stop_trigger = max(sma_50, recent_low) * (1.0 - dynamic_buffer)
-                
-                if stop_trigger >= current_price: 
-                    stop_trigger = current_price * (1.0 - dynamic_buffer)
-                    
-                stop_limit = stop_trigger * (1.0 - dynamic_buffer) 
-                
-                # Risk Logic (Synced with Volatility Stops)
                 if current_price <= stop_trigger:
                     status = "SELL"
-                    color = "text-[#EF4444]" # Red
-                    reason = "Stop Loss Breached"
-                elif current_price < sma_50:
-                    status = "HOLD"
-                    color = "text-[#EAB308]" # Yellow warning
-                    reason = "Testing Volatility Support"
+                    color = "text-[#EF4444]" 
+                    reason = "Trailing Stop Breached"
                 elif current_price > (sma_50 * 1.25):
                     status = "TRIM"
-                    color = "text-[#EAB308]" # Yellow
+                    color = "text-[#EAB308]" 
                     reason = "Overextended (>25% Above 50 SMA)"
                 else:
                     status = "HOLD"
-                    color = "text-[#22C55E]" # Green
+                    color = "text-[#22C55E]" 
                     reason = "Trend Healthy"
                     
                 results.append({
@@ -511,7 +512,6 @@ class BackendAPI:
                 
             sort_order = {"SELL": 0, "TRIM": 1, "HOLD": 2}
             results.sort(key=lambda x: sort_order.get(x["status"], 3))
-            
             return results
         except Exception as e:
             return [{"ticker": "ERROR", "reason": str(e)}]
@@ -538,17 +538,13 @@ class BackendAPI:
                     conn = sqlite3.connect(DB_PATH)
                     conn.execute("DELETE FROM trades")
                     conn.execute("DELETE FROM portfolios")
-                    
                     portfolios = df['Portfolio'].unique()
-                    for p in portfolios:
-                        conn.execute("INSERT INTO portfolios (name) VALUES (?)", (p,))
-                    
+                    for p in portfolios: conn.execute("INSERT INTO portfolios (name) VALUES (?)", (p,))
                     for index, row in df.iterrows():
                         pid = conn.execute("SELECT id FROM portfolios WHERE name=?", (row['Portfolio'],)).fetchone()[0]
                         conn.execute("INSERT INTO trades (portfolio_id, ticker, type, shares, price, date) VALUES (?, ?, ?, ?, ?, ?)",
                                      (pid, row['Ticker'], row['Type'], row['Shares'], row['Price'], row['Date']))
-                    conn.commit()
-                    conn.close()
+                    conn.commit(); conn.close()
                     self.window.evaluate_js('loadPortfolios(); alert("CSV Imported Successfully!");')
                 except Exception as e:
                     self.window.evaluate_js(f'alert("Import Error: Make sure headers are Portfolio, Ticker, Type, Shares, Price, Date");')
@@ -568,7 +564,7 @@ if __name__ == '__main__':
         width=1350, height=850, 
         background_color='#0a0a0c', 
         resizable=True,
-        frameless=True,       
+        frameless=True
     )
     api.window = window
     webview.start()
