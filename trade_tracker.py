@@ -22,6 +22,20 @@ def init_db():
     conn.commit()
     conn.close()
 
+def calculate_stop_gap(price, trigger_price):
+    """
+    Calculates the safe distance between the Stop Trigger and Stop Limit
+    to prevent whipsawing and order book skips on volatile exchanges.
+    """
+    if price < 1.00:
+        gap = max(trigger_price * 0.02, 0.02) # Minimum 2 cents for Micro-caps
+    elif price < 5.00:
+        gap = max(trigger_price * 0.015, 0.03) # Minimum 3 cents for Small-caps
+    else:
+        gap = max(trigger_price * 0.01, 0.05) # Minimum 5 cents for Mid/Large-caps
+        
+    return round(trigger_price - gap, 2)
+
 class BackendAPI:
     def __init__(self):
         self.window = None
@@ -294,15 +308,11 @@ class BackendAPI:
             "chart_values": chart_values
         }
 
-    # --- ZEN SCANNER ALGORITHM (Pure API Driven) ---
+    # --- ZEN SCANNER ALGORITHM (Tiered Risk Models) ---
     def run_swing_scanner(self, cash_available):
         try:
-            eval_cash = max(cash_available, 5.0) 
-            
-            if eval_cash < 500: max_position_size = eval_cash * 1.0    
-            elif eval_cash < 2500: max_position_size = eval_cash * 0.50   
-            elif eval_cash < 10000: max_position_size = eval_cash * 0.33   
-            else: max_position_size = eval_cash * 0.20   
+            # Baseline minimum for math calculations
+            eval_cash = max(cash_available, 100.0) 
                 
             full_universe = []
             tv_url = "https://scanner.tradingview.com/canada/scan"
@@ -339,13 +349,11 @@ class BackendAPI:
                     full_universe += [f"{item['d'][0].replace('.', '-')}.TO" for item in t_resp.json().get("data", []) if item.get("d")]
             except: pass
 
-            # Fail-safe if API completely blocks the request
             if not full_universe:
                 raise Exception("TradingView API Failed to return active market data.")
 
             full_universe = list(set(full_universe))
 
-            # We need High, Low, Close for ADX/ATR math
             data = yf.download(full_universe, period="1y", progress=False)
             if 'Close' not in data or 'Volume' not in data: return []
                 
@@ -369,18 +377,16 @@ class BackendAPI:
                 current_price = float(c_series.iloc[-1])
                 is_venture = '.V' in ticker
                 
-                min_shares = 10 if is_venture else 1
-                max_allowed_price = max_position_size / min_shares
-                if current_price > max_allowed_price or current_price < 0.15: continue 
+                # Liquidity & Price Guards
+                if current_price < 0.15: continue 
                 
                 avg_vol = float(v_series.tail(20).mean())
                 today_vol = float(v_series.iloc[-1])
                 
-                # 1. DOLLAR VOLUME LIQUIDITY GUARD
                 dollar_volume = avg_vol * current_price
                 if dollar_volume < 100000: continue
                 
-                # 2. ATR & ADX CALCULATION (Pandas Math)
+                # ADX Calculation
                 tr1 = h_series - l_series
                 tr2 = (h_series - c_series.shift(1)).abs()
                 tr3 = (l_series - c_series.shift(1)).abs()
@@ -391,18 +397,14 @@ class BackendAPI:
                 plus_dm[(plus_dm < 0) | (plus_dm < minus_dm)] = 0
                 minus_dm[(minus_dm < 0) | (minus_dm < plus_dm)] = 0
                 
-                atr_14 = tr.rolling(14).mean()
                 atr_sum = tr.rolling(14).sum()
-                
                 plus_di = 100 * (plus_dm.rolling(14).sum() / atr_sum)
                 minus_di = 100 * (minus_dm.rolling(14).sum() / atr_sum)
                 dx = (plus_di - minus_di).abs() / (plus_di + minus_di).abs() * 100
                 adx = dx.rolling(14).mean()
                 
                 current_adx = float(adx.iloc[-1])
-                current_atr = float(atr_14.iloc[-1])
                 
-                # 3. MOMENTUM FILTER (ADX > 25)
                 if pd.isna(current_adx) or current_adx < 25: continue
                 
                 sma_200 = float(c_series.tail(200).mean())
@@ -416,55 +418,68 @@ class BackendAPI:
                     if current_price > sma_50 and current_price < (sma_50 * 1.20):
                         if current_price < sma_10:
                             
-                            # 4. VOLATILITY STOP WITH DYNAMIC CAPS
-                            cap = 0.15 if current_price < 1.00 else 0.10
-                            raw_risk_pct = (current_atr * 2) / current_price
-                            dynamic_buffer = min(raw_risk_pct, cap)
+                            # 1. TIERED STOP LOSS CALCULATION
+                            if current_price < 1.00:
+                                stop_distance_pct = 0.15
+                            elif current_price < 5.00:
+                                stop_distance_pct = 0.08
+                            else:
+                                stop_distance_pct = 0.05
                             
-                            stop_trigger = current_price * (1.0 - dynamic_buffer)
-                            stop_limit = stop_trigger * 0.98 
+                            stop_trigger = round(current_price * (1 - stop_distance_pct), 2)
                             
-                            risk = current_price - stop_trigger
-                            if risk <= 0: continue
+                            # 2. HARD MINIMUM STOP LIMIT GAP
+                            stop_limit = calculate_stop_gap(current_price, stop_trigger)
                             
-                            take_profit = current_price + (risk * 2.5)
-                            shares = int(max_position_size / current_price)
+                            # 3. POSITION SIZING (2% Portfolio Risk)
+                            risk_per_share = current_price - stop_trigger
+                            if risk_per_share <= 0: continue
                             
-                            if shares >= min_shares:
-                                try:
-                                    sector_raw = yf.Ticker(ticker).info.get('sector', 'Unknown')
-                                    if sector_raw == 'Basic Materials': sector = 'Materials'
-                                    elif sector_raw == 'Financial Services': sector = 'Financials'
-                                    elif sector_raw == 'Consumer Cyclical': sector = 'Cyclical'
-                                    elif sector_raw == 'Communication Services': sector = 'Comm Services'
-                                    else: sector = sector_raw
-                                except: sector = 'Unknown'
+                            risk_amount = eval_cash * 0.02
+                            shares = int(risk_amount / risk_per_share)
+                            
+                            # Cap by available cash
+                            max_shares_affordable = int(eval_cash / current_price)
+                            shares = min(shares, max_shares_affordable)
+                            
+                            if shares <= 0: continue # Cannot afford even 1 share with risk model
+                            
+                            # 4. 2:1 REWARD/RISK TARGET
+                            take_profit = round(current_price + (risk_per_share * 2), 2)
+                            
+                            try:
+                                sector_raw = yf.Ticker(ticker).info.get('sector', 'Unknown')
+                                if sector_raw == 'Basic Materials': sector = 'Materials'
+                                elif sector_raw == 'Financial Services': sector = 'Financials'
+                                elif sector_raw == 'Consumer Cyclical': sector = 'Cyclical'
+                                elif sector_raw == 'Communication Services': sector = 'Comm Services'
+                                else: sector = sector_raw
+                            except: sector = 'Unknown'
 
-                                if current_price >= (high_52wk * 0.90): setup_tag = "52-Wk High Pullback"
-                                elif today_vol > (avg_vol * 1.5): setup_tag = "High Vol Drop"
-                                else: setup_tag = "Golden Cross Pullback"
+                            if current_price >= (high_52wk * 0.90): setup_tag = "52-Wk High Pullback"
+                            elif today_vol > (avg_vol * 1.5): setup_tag = "High Vol Drop"
+                            else: setup_tag = "Golden Cross Pullback"
+                            
+                            suggestions.append({
+                                "ticker": ticker,
+                                "buy_price": current_price,
+                                "stop_trigger": stop_trigger,
+                                "stop_limit": stop_limit,
+                                "take_profit": take_profit,
+                                "shares": shares,
+                                "total_cost": round(shares * current_price, 2),
+                                "setup": setup_tag,
+                                "sector": sector,
+                                "adx": current_adx 
+                            })
                                 
-                                suggestions.append({
-                                    "ticker": ticker,
-                                    "buy_price": current_price,
-                                    "stop_trigger": stop_trigger,
-                                    "stop_limit": stop_limit,
-                                    "take_profit": take_profit,
-                                    "shares": shares,
-                                    "total_cost": shares * current_price,
-                                    "setup": setup_tag,
-                                    "sector": sector,
-                                    "adx": current_adx # Sort by momentum
-                                })
-                                
-            # SORT BY PURE MOMENTUM INSTEAD OF TIGHTEST STOP
             suggestions.sort(key=lambda x: x['adx'], reverse=True)
             return suggestions[:3] 
             
         except Exception as e:
             return [{"ticker": "ERROR", "buy_price": 0, "stop_trigger": 0, "stop_limit": 0, "take_profit": 0, "shares": 0, "total_cost": 0, "setup": str(e), "sector": "", "adx": 0}]
 
-    # --- PORTFOLIO AUDITOR ALGORITHM (Fixed Trailing Math) ---
+    # --- PORTFOLIO AUDITOR ALGORITHM (Tiered Trailing Math) ---
     def audit_portfolio(self, tickers):
         if not tickers: return []
         try:
@@ -487,20 +502,25 @@ class BackendAPI:
                 
                 current_price = float(c_series.iloc[-1])
                 sma_50 = float(c_series.tail(50).mean())
-                # 8-EMA acts as our aggressive trailing anchor
-                ema_8 = float(c_series.ewm(span=8, adjust=False).mean().iloc[-1])
+                recent_high = float(c_series.tail(14).max())
                 
-                # 1. DYNAMIC VOLATILITY BUFFER
-                # Calculates how violently the stock swings and caps the risk
-                daily_volatility = c_series.pct_change().abs().tail(14).mean()
-                cap = 0.15 if current_price < 1.00 else 0.10
-                dynamic_buffer = min(daily_volatility * 2, cap)
-                dynamic_buffer = max(0.04, dynamic_buffer) # Ensure at least 4% room to breathe
+                # 1. TIERED TRAILING STOP PERCENTAGES
+                if current_price < 1.00:
+                    trail_pct = 0.15
+                elif current_price < 5.00:
+                    trail_pct = 0.10
+                else:
+                    trail_pct = 0.08
                 
-                # 2. PROPER TRAILING STOP
-                # Anchor to the fastest trendline, but place the stop BELOW it by the buffer amount
-                stop_trigger = max(sma_50, ema_8) * (1.0 - dynamic_buffer)
-                stop_limit = stop_trigger * 0.98 
+                # 2. CALCULATE TRAILING STOP FROM RECENT HIGHS
+                stop_trigger = round(recent_high * (1.0 - trail_pct), 2)
+                
+                # Ensure we don't accidentally set a trigger above the current market price on a sudden drop
+                if stop_trigger >= current_price:
+                    stop_trigger = round(current_price * 0.98, 2)
+                
+                # 3. HARD MINIMUM STOP LIMIT GAP
+                stop_limit = calculate_stop_gap(current_price, stop_trigger)
                 
                 if current_price <= stop_trigger:
                     status = "SELL"
@@ -577,10 +597,10 @@ if __name__ == '__main__':
     window = webview.create_window(
         'Zen Portfolios', url=get_entrypoint(), js_api=api,
         width=1280, height=760, 
-        background_color='#0a0a0c', # Solid black to match the app
+        background_color='#0a0a0c',
         resizable=True,
         frameless=True,
-        transparent=False # Switched to False for maximum stability
+        transparent=False
     )
     api.window = window
     webview.start()
