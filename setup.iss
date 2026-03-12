@@ -1,19 +1,22 @@
 [Setup]
 ; --- Branding & Publisher Info ---
-AppName=Zen Trade Scanner
+AppName=Zen Portfolios
 AppVersion=1.0.0
 AppPublisher=Zen Trading
 AppPublisherURL=https://www.youtube.com/@ZenGaming
 
 ; --- Installation Directories ---
-DefaultDirName={autopf}\Zen Trade Scanner
-DefaultGroupName=Zen Trade Scanner
+DefaultDirName={autopf}\Zen Portfolios
+DefaultGroupName=Zen Portfolios
 OutputDir=Output
-OutputBaseFilename=Zen_Trade_Scanner_Installer
+OutputBaseFilename=Zen_Portfolios_Installer
 
 ; --- Icons & Visuals ---
 SetupIconFile=icon.ico
 UninstallDisplayIcon={app}\icon.ico
+WizardStyle=modern
+WizardImageFile=splash.png
+WizardSmallImageFile=splash.png
 
 ; --- System Settings ---
 Compression=lzma
@@ -25,8 +28,8 @@ Source: "dist\trade_tracker.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{autodesktop}\Zen Trade Scanner"; Filename: "{app}\trade_tracker.exe"; IconFilename: "{app}\icon.ico"
-Name: "{group}\Zen Trade Scanner"; Filename: "{app}\trade_tracker.exe"; IconFilename: "{app}\icon.ico"
+Name: "{autodesktop}\Zen Portfolios"; Filename: "{app}\trade_tracker.exe"; IconFilename: "{app}\icon.ico"
+Name: "{group}\Zen Portfolios"; Filename: "{app}\trade_tracker.exe"; IconFilename: "{app}\icon.ico"
 
 [Run]
-Filename: "{app}\trade_tracker.exe"; Description: "Launch Zen Trade Scanner"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\trade_tracker.exe"; Description: "Launch Zen Portfolios"; Flags: nowait postinstall skipifsilent
