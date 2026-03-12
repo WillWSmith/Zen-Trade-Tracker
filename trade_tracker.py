@@ -556,17 +556,18 @@ if __name__ == '__main__':
     try: import pyi_splash; pyi_splash.close()
     except ImportError: pass
 
+    # Safely locate the icon whether running live or inside the compiled EXE
+    icon_path = os.path.join(sys._MEIPASS, 'icon.ico') if hasattr(sys, '_MEIPASS') else 'icon.ico'
+
     api = BackendAPI()
-window = webview.create_window(
+    window = webview.create_window(
         'Zen Trade Scanner', url=get_entrypoint(), js_api=api,
         width=1350, height=850, 
         background_color='#0a0a0c', 
         resizable=True,
         frameless=True,       
         maximized=True,
-        # Force the taskbar/app icon internally
-        # Make sure 'icon.ico' is in the same folder, or point to it inside your 'gui' folder
-        icon='icon.ico'  
+        icon=icon_path  
     )
     api.window = window
     webview.start()
