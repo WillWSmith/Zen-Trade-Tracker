@@ -33,10 +33,27 @@ class BackendAPI:
     def toggle_maximize(self):
         if self.window:
             if self.is_maximized:
-                self.window.restore()
+                # Restore to default size and center it
+                self.window.resize(1280, 760)
+                if os.name == 'nt':
+                    import ctypes
+                    user32 = ctypes.windll.user32
+                    sw = user32.GetSystemMetrics(0)
+                    sh = user32.GetSystemMetrics(1)
+                    self.window.move(int((sw - 1280) / 2), int((sh - 760) / 2))
                 self.is_maximized = False
             else:
-                self.window.maximize()
+                # Ask Windows for the usable screen area (excludes the taskbar)
+                if os.name == 'nt':
+                    import ctypes
+                    from ctypes import wintypes
+                    user32 = ctypes.windll.user32
+                    rect = wintypes.RECT()
+                    user32.SystemParametersInfoW(48, 0, ctypes.byref(rect), 0) # 48 is SPI_GETWORKAREA
+                    self.window.resize(rect.right - rect.left, rect.bottom - rect.top)
+                    self.window.move(rect.left, rect.top)
+                else:
+                    self.window.maximize() # Fallback for Mac/Linux
                 self.is_maximized = True
 
     def close_app(self):
@@ -277,7 +294,7 @@ class BackendAPI:
             "chart_values": chart_values
         }
 
-    # --- ZEN SCANNER ALGORITHM (ADX & ATR Upgraded) ---
+    # --- ZEN SCANNER ALGORITHM (Pure API Driven) ---
     def run_swing_scanner(self, cash_available):
         try:
             eval_cash = max(cash_available, 5.0) 
@@ -287,12 +304,10 @@ class BackendAPI:
             elif eval_cash < 10000: max_position_size = eval_cash * 0.33   
             else: max_position_size = eval_cash * 0.20   
                 
-            tsx_v_staples = [
-                'HIVE.V', 'BITF.V', 'NILI.V', 'PMN.V', 'SGN.V', 'LI.V', 'EU.V', 'CRE.V', 
-                'ISO.V', 'AFM.V', 'VLI.V', 'GGD.V', 'RECO.V', 'SLI.V', 'FL.V', 'NGD.V'
-            ]
-            
+            full_universe = []
             tv_url = "https://scanner.tradingview.com/canada/scan"
+            
+            # Fetch Top 150 TSXV by Volume
             try:
                 v_payload = {
                     "filter": [{"left": "exchange", "operation": "equal", "right": "TSXV"}],
@@ -301,38 +316,34 @@ class BackendAPI:
                     "symbols": {"query": {"types": []}, "tickers": []},
                     "columns": ["name", "volume"],
                     "sort": {"sortBy": "volume", "sortOrder": "desc"},
-                    "range": [0, 100] 
+                    "range": [0, 150] 
                 }
-                v_resp = requests.post(tv_url, json=v_payload, timeout=5)
+                v_resp = requests.post(tv_url, json=v_payload, timeout=10)
                 if v_resp.status_code == 200:
-                    dynamic_v = [f"{item['d'][0].replace('.', '-')}.V" for item in v_resp.json().get("data", []) if item.get("d")]
-                    tsx_v_staples = list(set(tsx_v_staples + dynamic_v))
+                    full_universe += [f"{item['d'][0].replace('.', '-')}.V" for item in v_resp.json().get("data", []) if item.get("d")]
             except: pass
 
-            full_universe = []
-            if eval_cash < 500:
-                full_universe = tsx_v_staples + ['BTE.TO', 'CPG.TO', 'ATH.TO', 'CVE.TO', 'CJ.TO']
-            else:
-                dynamic_tsx = ['SHOP.TO', 'RY.TO', 'TD.TO', 'ENB.TO', 'CNR.TO', 'CP.TO', 'BMO.TO', 'SU.TO', 'CSU.TO']
-                try:
-                    t_payload = {
-                        "filter": [{"left": "exchange", "operation": "equal", "right": "TSX"}],
-                        "options": {"lang": "en"},
-                        "markets": ["canada"],
-                        "symbols": {"query": {"types": []}, "tickers": []},
-                        "columns": ["name", "volume"],
-                        "sort": {"sortBy": "volume", "sortOrder": "desc"},
-                        "range": [0, 150] 
-                    }
-                    t_resp = requests.post(tv_url, json=t_payload, timeout=5)
-                    if t_resp.status_code == 200:
-                        dynamic_tsx = [f"{item['d'][0].replace('.', '-')}.TO" for item in t_resp.json().get("data", []) if item.get("d")]
-                except: pass
-                    
-                if eval_cash < 5000: full_universe = dynamic_tsx + tsx_v_staples
-                else: full_universe = dynamic_tsx + tsx_v_staples[:15]
+            # Fetch Top 150 TSX Main Board by Volume
+            try:
+                t_payload = {
+                    "filter": [{"left": "exchange", "operation": "equal", "right": "TSX"}],
+                    "options": {"lang": "en"},
+                    "markets": ["canada"],
+                    "symbols": {"query": {"types": []}, "tickers": []},
+                    "columns": ["name", "volume"],
+                    "sort": {"sortBy": "volume", "sortOrder": "desc"},
+                    "range": [0, 150] 
+                }
+                t_resp = requests.post(tv_url, json=t_payload, timeout=10)
+                if t_resp.status_code == 200:
+                    full_universe += [f"{item['d'][0].replace('.', '-')}.TO" for item in t_resp.json().get("data", []) if item.get("d")]
+            except: pass
 
-            full_universe = list(set(full_universe))[:350]
+            # Fail-safe if API completely blocks the request
+            if not full_universe:
+                raise Exception("TradingView API Failed to return active market data.")
+
+            full_universe = list(set(full_universe))
 
             # We need High, Low, Close for ADX/ATR math
             data = yf.download(full_universe, period="1y", progress=False)
@@ -410,7 +421,7 @@ class BackendAPI:
                             raw_risk_pct = (current_atr * 2) / current_price
                             dynamic_buffer = min(raw_risk_pct, cap)
                             
-                            stop_trigger = sma_50 * (1.0 - dynamic_buffer)
+                            stop_trigger = current_price * (1.0 - dynamic_buffer)
                             stop_limit = stop_trigger * 0.98 
                             
                             risk = current_price - stop_trigger
@@ -453,8 +464,7 @@ class BackendAPI:
         except Exception as e:
             return [{"ticker": "ERROR", "buy_price": 0, "stop_trigger": 0, "stop_limit": 0, "take_profit": 0, "shares": 0, "total_cost": 0, "setup": str(e), "sector": "", "adx": 0}]
 
-    # --- PORTFOLIO AUDITOR ALGORITHM (High-Water Mark Upgraded) ---
-# --- PORTFOLIO AUDITOR ALGORITHM (Fixed Trailing Math) ---
+    # --- PORTFOLIO AUDITOR ALGORITHM (Fixed Trailing Math) ---
     def audit_portfolio(self, tickers):
         if not tickers: return []
         try:
