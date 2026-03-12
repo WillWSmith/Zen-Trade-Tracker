@@ -454,37 +454,42 @@ class BackendAPI:
             return [{"ticker": "ERROR", "buy_price": 0, "stop_trigger": 0, "stop_limit": 0, "take_profit": 0, "shares": 0, "total_cost": 0, "setup": str(e), "sector": "", "adx": 0}]
 
     # --- PORTFOLIO AUDITOR ALGORITHM (High-Water Mark Upgraded) ---
+# --- PORTFOLIO AUDITOR ALGORITHM (Fixed Trailing Math) ---
     def audit_portfolio(self, tickers):
         if not tickers: return []
         try:
             data = yf.download(tickers, period="1y", progress=False)
             close_data = pd.DataFrame()
-            high_data = pd.DataFrame()
             
             if len(tickers) == 1:
                 if 'Close' in data: close_data[tickers[0]] = data['Close']
-                if 'High' in data: high_data[tickers[0]] = data['High']
             else:
                 if 'Close' in data: close_data = data['Close']
-                if 'High' in data: high_data = data['High']
                     
             if close_data.empty: return []
 
             results = []
             for ticker in tickers:
-                if ticker not in close_data.columns or ticker not in high_data.columns: continue
+                if ticker not in close_data.columns: continue
                 
                 c_series = close_data[ticker].dropna()
-                h_series = high_data[ticker].dropna()
                 if len(c_series) < 50: continue
                 
                 current_price = float(c_series.iloc[-1])
                 sma_50 = float(c_series.tail(50).mean())
+                # 8-EMA acts as our aggressive trailing anchor
                 ema_8 = float(c_series.ewm(span=8, adjust=False).mean().iloc[-1])
-                peak_price = float(h_series.tail(20).max()) # High-Water mark of last month
                 
-                # HIGH WATER TRAILING STOP LOGIC
-                stop_trigger = max(sma_50, ema_8, peak_price * 0.90)
+                # 1. DYNAMIC VOLATILITY BUFFER
+                # Calculates how violently the stock swings and caps the risk
+                daily_volatility = c_series.pct_change().abs().tail(14).mean()
+                cap = 0.15 if current_price < 1.00 else 0.10
+                dynamic_buffer = min(daily_volatility * 2, cap)
+                dynamic_buffer = max(0.04, dynamic_buffer) # Ensure at least 4% room to breathe
+                
+                # 2. PROPER TRAILING STOP
+                # Anchor to the fastest trendline, but place the stop BELOW it by the buffer amount
+                stop_trigger = max(sma_50, ema_8) * (1.0 - dynamic_buffer)
                 stop_limit = stop_trigger * 0.98 
                 
                 if current_price <= stop_trigger:
