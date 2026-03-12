@@ -579,7 +579,9 @@ if __name__ == '__main__':
         width=1280, height=760, 
         background_color='#0a0a0c', 
         resizable=True,
-        frameless=True
+        frameless=True,
+        easy_drag=False, # Prevents accidental dragging on the borders
+        transparent=True # <--- ADD THIS to fix the black corner squares
     )
     api.window = window
     webview.start()
