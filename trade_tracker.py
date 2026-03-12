@@ -577,9 +577,10 @@ if __name__ == '__main__':
     window = webview.create_window(
         'Zen Portfolios', url=get_entrypoint(), js_api=api,
         width=1280, height=760, 
-        background_color='#0a0a0c', 
+        background_color='#000000', # Pure black helps the chroma-keying
         resizable=True,
-        frameless=True
+        frameless=True,
+        transparent=True # Re-enabling this for the chroma-key effect
     )
     api.window = window
     webview.start()
