@@ -1,7 +1,10 @@
-name: Build Installer EXE 2
+name: Build Installer EXE
 
 on: 
   workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
