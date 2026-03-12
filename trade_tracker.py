@@ -26,6 +26,16 @@ class BackendAPI:
     def __init__(self):
         self.window = None
 
+    def minimize(self):
+        if self.window: self.window.minimize()
+
+    def maximize(self):
+        if self.window:
+            self.window.toggle_fullscreen()
+
+    def close_app(self):
+        if self.window: self.window.destroy()
+    
     def get_portfolios(self):
         conn = sqlite3.connect(DB_PATH)
         portfolios = {name: pid for pid, name in conn.execute("SELECT id, name FROM portfolios").fetchall()}
@@ -548,8 +558,11 @@ if __name__ == '__main__':
 
     api = BackendAPI()
     window = webview.create_window(
-        'Zen Trade Tracker - v1.0.0', url=get_entrypoint(), js_api=api,
-        width=1350, height=850, background_color='#121214', resizable=True
+        'Zen Trade Scanner', url=get_entrypoint(), js_api=api,
+        width=1350, height=850, 
+        background_color='#0a0a0c', # Matches your Zen Black sidebar
+        resizable=True,
+        frameless=True # <--- This deletes the clunky Windows OS border
     )
     api.window = window
     webview.start()
