@@ -60,7 +60,6 @@ async function refreshData() {
 function updateDashboard(data) {
     if (!data) return;
 
-    // Update Auto-fill Tickers
     const datalist = document.getElementById('ticker-suggestions');
     if (datalist && data.unique_tickers) {
         datalist.innerHTML = '';
@@ -71,10 +70,8 @@ function updateDashboard(data) {
         });
     }
 
-    // Top Level Summary Cards
     document.getElementById('val-account').textContent = `$${data.total_account.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
     
-    // Calculate and Animate Progress Bar
     let investedPct = 0; let cashPct = 0;
     if (data.total_account > 0) {
         investedPct = (data.total_market / data.total_account) * 100;
@@ -85,17 +82,14 @@ function updateDashboard(data) {
     document.getElementById('lbl-invested').textContent = `${investedPct.toFixed(1)}%`;
     document.getElementById('lbl-cash').textContent = `${cashPct.toFixed(1)}% ($${data.total_cash.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})})`;
 
-    // Today's Return
     const todayEl = document.getElementById('val-today');
     todayEl.textContent = `${data.today_dlr >= 0 ? '+' : ''}$${data.today_dlr.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${data.today_pct >= 0 ? '+' : ''}${data.today_pct.toFixed(2)}%)`;
     todayEl.className = data.today_dlr >= 0 ? 'text-3xl font-semibold tracking-tight tabular-nums text-[#22C55E]' : 'text-3xl font-semibold tracking-tight tabular-nums text-[#EF4444]';
 
-    // Unrealized
     const unrealEl = document.getElementById('val-unreal');
     unrealEl.textContent = `${data.unreal_dlr >= 0 ? '+' : ''}$${data.unreal_dlr.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${data.unreal_pct >= 0 ? '+' : ''}${data.unreal_pct.toFixed(2)}%)`;
     unrealEl.className = data.unreal_dlr >= 0 ? 'text-3xl font-semibold tracking-tight tabular-nums text-[#22C55E]' : 'text-3xl font-semibold tracking-tight tabular-nums text-[#EF4444]';
 
-    // Realized
     const realEl = document.getElementById('val-real');
     realEl.textContent = `${data.realized_gl >= 0 ? '+' : ''}$${data.realized_gl.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${data.realized_pct >= 0 ? '+' : ''}${data.realized_pct.toFixed(2)}%)`;
     realEl.className = data.realized_gl >= 0 ? 'text-3xl font-semibold tracking-tight tabular-nums text-[#22C55E]' : 'text-3xl font-semibold tracking-tight tabular-nums text-[#EF4444]';
@@ -105,7 +99,6 @@ function updateDashboard(data) {
     drawMainChart(data.chart_dates, data.chart_values);
 }
 
-// Sorting Functions
 function sortHoldings(col) {
     if (holdSort.column === col) holdSort.asc = !holdSort.asc;
     else { holdSort.column = col; holdSort.asc = (col === 'ticker'); }
@@ -136,8 +129,8 @@ function renderHoldings() {
         const prefix = h.unreal_dlr >= 0 ? '+' : '';
         tr.innerHTML = `
             <td class="px-2 py-3 font-bold cursor-pointer hover:text-zen-green transition" onclick="setTickerInput('${h.ticker}')" title="Click to queue trade">
-    ${h.ticker}
-</td>
+                ${h.ticker}
+            </td>
             <td class="px-2 py-3 text-right text-zen-green bg-zen-green/5">${h.allocation.toFixed(1)}%</td>
             <td class="px-2 py-3 text-right">${h.shares.toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
             <td class="px-2 py-3 text-right">$${h.avg_cost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 4})}</td>
@@ -297,23 +290,19 @@ async function submitCash(type) {
     refreshData();
 }
 
-// ==========================================
-// --- NIGHT OWL SCANNER LOGIC ---
-// ==========================================
 async function openScanner() {
     const cash = currentData ? currentData.total_cash : 0;
-    const totalAccount = currentData ? currentData.total_account : 100.0;
     
     document.getElementById('scanner-modal').classList.remove('hidden');
     document.getElementById('scanner-results').innerHTML = `
         <div class="col-span-3 text-center py-16 flex flex-col items-center justify-center">
             <i class="fas fa-satellite-dish fa-spin text-5xl text-indigo-400 mb-6 drop-shadow-[0_0_10px_rgba(129,140,248,0.6)]"></i>
             <h3 class="text-white text-xl font-bold tracking-wider mb-2">Scanning TSX & TSX.V...</h3>
-            <p class="text-zen-gray text-sm animate-pulse">Running institutional volume and momentum filters...</p>
+            <p class="text-zen-gray text-sm animate-pulse">Running momentum filters...</p>
         </div>`;
     
     try {
-        const results = await pywebview.api.run_swing_scanner(cash, totalAccount);
+        const results = await pywebview.api.run_swing_scanner(cash);
         renderScannerResults(results);
     } catch(e) {
         document.getElementById('scanner-results').innerHTML = `<div class="col-span-3 text-center text-zen-red py-10 font-bold">Scanner Error: ${e}</div>`;
@@ -333,9 +322,6 @@ function renderScannerResults(results) {
         return;
     }
     
-    // ==========================================
-    // --- NEW VIBRANT SECTOR PALETTE ---
-    // ==========================================
     const sectorColors = {
         'Energy':      'bg-[#FF5722] text-white border border-[#FFAB91]',       
         'Materials':   'bg-[#FBC02D] text-black font-black border border-[#FFF9C4]', 
@@ -353,22 +339,13 @@ function renderScannerResults(results) {
         }
 
         const sColor = sectorColors[r.sector] || 'bg-indigo-600 text-white border border-indigo-400';
-
-        // ==========================================
-        // --- CLEAN ICON + TEXT SETUP INDICATOR ---
-        // ==========================================
         let setupIcon = '<i class="fas fa-bolt text-fuchsia-400"></i>'; 
-        if (r.setup.includes('52-Wk')) {
-            setupIcon = '<i class="fas fa-fire text-rose-500"></i>'; 
-        } else if (r.setup.includes('High Vol')) {
-            setupIcon = '<i class="fas fa-water text-sky-400"></i>';   
-        } else if (r.setup.includes('Golden Cross')) {
-            setupIcon = '<i class="fas fa-shield-halved text-yellow-400"></i>'; 
-        }
+        if (r.setup.includes('52-Wk')) setupIcon = '<i class="fas fa-fire text-rose-500"></i>'; 
+        else if (r.setup.includes('High Vol')) setupIcon = '<i class="fas fa-water text-sky-400"></i>';   
+        else if (r.setup.includes('Golden Cross')) setupIcon = '<i class="fas fa-shield-halved text-yellow-400"></i>'; 
 
         container.innerHTML += `
             <div class="bg-white/5 backdrop-blur-md border border-indigo-500/30 rounded-xl p-5 transition relative overflow-hidden flex flex-col h-full hover:border-indigo-400 hover:shadow-[0_0_20px_rgba(99,102,241,0.2)]">
-                
                 <div class="flex justify-between items-start mb-4">
                     <div class="flex flex-col items-start gap-1">
                         <h3 class="text-3xl font-extrabold text-white tracking-tight leading-none">${r.ticker}</h3>
@@ -377,16 +354,15 @@ function renderScannerResults(results) {
                             <span class="ml-1.5 opacity-80">${r.setup}</span>
                         </div>
                     </div>
-                    
                     <span class="px-2.5 py-1 text-[0.7rem] font-extrabold uppercase tracking-wider rounded border shadow-sm ${sColor}">${r.sector}</span>
                 </div>
                 
-<div class="space-y-2.5 text-sm tabular-nums flex-1 mt-1 border-t border-white/10 pt-4">
+                <div class="space-y-2.5 text-sm tabular-nums flex-1 mt-1 border-t border-white/10 pt-4">
                     <div class="flex justify-between border-b border-white/5 pb-2">
                         <span class="text-zen-gray">Buy Limit:</span>
-                        <span class="text-white font-bold max-w-[100px] text-right">$${r.buy_price.toFixed(2)}</span>
+                        <span class="text-white font-bold max-w-[100px] text-right">$${r.buy_price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}</span>
                     </div>
-<div class="flex justify-between border-b border-white/5 pb-2">
+                    <div class="flex justify-between border-b border-white/5 pb-2">
                         <span class="text-zen-gray mt-1">Position Size:</span>
                         <div class="flex flex-col items-end leading-tight">
                             <span class="text-white font-bold">${r.shares}</span>
@@ -395,15 +371,15 @@ function renderScannerResults(results) {
                     </div>
                     <div class="flex justify-between border-b border-white/5 pb-2">
                         <span class="text-zen-gray" title="Recommended Stop Trigger">Stop Trigger:</span>
-                        <span class="text-[#EF4444] font-bold">$${r.stop_trigger.toFixed(2)}</span>
+                        <span class="text-[#EF4444] font-bold">$${r.stop_trigger.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}</span>
                     </div>
                     <div class="flex justify-between border-b border-white/5 pb-2">
                         <span class="text-zen-gray" title="Recommended Stop Limit">Stop Limit:</span>
-                        <span class="text-[#EF4444] font-bold opacity-80">$${r.stop_limit.toFixed(2)}</span>
+                        <span class="text-[#EF4444] font-bold opacity-80">$${r.stop_limit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}</span>
                     </div>
                     <div class="flex justify-between pt-1">
                         <span class="text-zen-gray">Target:</span>
-                        <span class="text-[#22C55E] font-bold">$${r.take_profit.toFixed(2)}</span>
+                        <span class="text-[#22C55E] font-bold">$${r.take_profit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}</span>
                     </div>
                 </div>
             </div>
@@ -411,9 +387,6 @@ function renderScannerResults(results) {
     });
 }
 
-// ==========================================
-// --- PORTFOLIO AUDITOR LOGIC ---
-// ==========================================
 async function openAuditor() {
     if (!currentData || !currentData.holdings || currentData.holdings.length === 0) {
         alert("You don't have any active stock holdings to audit.");
@@ -459,17 +432,16 @@ function renderAuditorResults(results) {
         let borderColor = 'border-teal-500/30 hover:border-teal-400 hover:shadow-[0_0_20px_rgba(20,184,166,0.2)]';
         let statusStyle = 'bg-green-500/20 text-green-400 border-green-500/50'; 
 
-        if (r.status === 'SELL ALL' || r.status === 'SELL') {
+        if (r.status === 'SELL') {
             borderColor = 'border-red-500/50 hover:border-red-400 hover:shadow-[0_0_20px_rgba(239,68,68,0.2)]';
             statusStyle = 'bg-red-500/20 text-red-400 border-red-500/50';
-        } else if (r.status === 'TAKE PROFIT' || r.status === 'TRIM') {
+        } else if (r.status === 'TRIM') {
             borderColor = 'border-yellow-500/50 hover:border-yellow-400 hover:shadow-[0_0_20px_rgba(234,179,8,0.2)]';
             statusStyle = 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50';
         }
 
         container.innerHTML += `
             <div class="bg-white/5 backdrop-blur-md border ${borderColor} rounded-xl p-5 transition relative overflow-hidden flex flex-col h-full">
-                
                 <div class="mb-4">
                     <div class="flex justify-between items-start mb-1">
                         <h3 class="text-2xl font-bold text-white tracking-tight">${r.ticker}</h3>
@@ -483,15 +455,15 @@ function renderAuditorResults(results) {
                 <div class="space-y-2.5 text-sm tabular-nums flex-1 mt-2">
                     <div class="flex justify-between border-b border-white/10 pb-2">
                         <span class="text-zen-gray">Current Price:</span>
-                        <span class="text-white font-bold">$${r.current_price.toFixed(2)}</span>
+                        <span class="text-white font-bold">$${r.current_price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}</span>
                     </div>
                     <div class="flex justify-between border-b border-white/10 pb-2">
                         <span class="text-zen-gray" title="Recommended Trailing Stop Strike Price">Trail Trigger:</span>
-                        <span class="text-[#EF4444] font-bold">$${r.stop_trigger.toFixed(2)}</span>
+                        <span class="text-[#EF4444] font-bold">$${r.stop_trigger.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}</span>
                     </div>
                     <div class="flex justify-between border-b border-white/10 pb-2">
                         <span class="text-zen-gray" title="Recommended Trailing Stop Limit Price">Trail Limit:</span>
-                        <span class="text-[#EF4444] font-bold opacity-80">$${r.stop_limit.toFixed(2)}</span>
+                        <span class="text-[#EF4444] font-bold opacity-80">$${r.stop_limit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}</span>
                     </div>
                 </div>
             </div>
@@ -499,15 +471,10 @@ function renderAuditorResults(results) {
     });
 }
 
-// ==========================================
-// --- UI WORKFLOW HELPERS ---
-// ==========================================
 function setTickerInput(ticker) {
     const input = document.getElementById('ticker-input');
     input.value = ticker;
     input.focus();
-    
-    // Quick flash animation to confirm action
     input.classList.add('border-zen-green', 'bg-zen-green/20');
     setTimeout(() => {
         input.classList.remove('border-zen-green', 'bg-zen-green/20');
