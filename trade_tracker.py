@@ -573,11 +573,11 @@ if __name__ == '__main__':
     try: import pyi_splash; pyi_splash.close()
     except ImportError: pass
 
-api = BackendAPI()
+    api = BackendAPI()
     window = webview.create_window(
         'Zen Portfolios', url=get_entrypoint(), js_api=api,
         width=1280, height=760, 
-        background_color='#0a0a0c', # Solid black matches your app
+        background_color='#0a0a0c', 
         resizable=True,
         frameless=True
     )
