@@ -479,18 +479,37 @@ class BackendAPI:
         except Exception as e:
             return [{"ticker": "ERROR", "buy_price": 0, "stop_trigger": 0, "stop_limit": 0, "take_profit": 0, "shares": 0, "total_cost": 0, "setup": str(e), "sector": "", "adx": 0}]
 
-    # --- PORTFOLIO AUDITOR ALGORITHM (Tiered Trailing Math) ---
+    # --- PORTFOLIO AUDITOR ALGORITHM (Database-Aware) ---
     def audit_portfolio(self, tickers):
         if not tickers: return []
         try:
+            # 1. Fetch actual positions and average costs from your database
+            conn = sqlite3.connect(DB_PATH)
+            raw_trades = conn.execute("SELECT ticker, type, shares, price FROM trades").fetchall()
+            conn.close()
+
+            holdings = {}
+            for ticker, t_type, shares, price in raw_trades:
+                if ticker not in holdings: holdings[ticker] = {'shares': 0, 'avg_cost': 0.0}
+                h = holdings[ticker]
+                if t_type == 'Buy':
+                    total_cost = (h['shares'] * h['avg_cost']) + (shares * price)
+                    h['shares'] += shares
+                    h['avg_cost'] = total_cost / h['shares'] if h['shares'] > 0 else 0
+                elif t_type == 'Sell':
+                    h['shares'] -= shares
+                    if h['shares'] <= 0:
+                        h['shares'] = 0
+                        h['avg_cost'] = 0.0
+
+            # 2. Fetch live market data
             data = yf.download(tickers, period="1y", progress=False)
             close_data = pd.DataFrame()
-            
             if len(tickers) == 1:
                 if 'Close' in data: close_data[tickers[0]] = data['Close']
             else:
                 if 'Close' in data: close_data = data['Close']
-                    
+
             if close_data.empty: return []
 
             results = []
@@ -498,43 +517,61 @@ class BackendAPI:
                 if ticker not in close_data.columns: continue
                 
                 c_series = close_data[ticker].dropna()
-                if len(c_series) < 50: continue
+                if len(c_series) < 14: continue
                 
                 current_price = float(c_series.iloc[-1])
-                sma_50 = float(c_series.tail(50).mean())
                 recent_high = float(c_series.tail(14).max())
                 
-                # 1. TIERED TRAILING STOP PERCENTAGES
-                if current_price < 1.00:
-                    trail_pct = 0.15
-                elif current_price < 5.00:
-                    trail_pct = 0.10
-                else:
-                    trail_pct = 0.08
+                # 3. Pull the exact entry price for this stock
+                holding = holdings.get(ticker, {'shares': 0, 'avg_cost': current_price})
+                shares_held = holding['shares']
+                avg_cost = holding['avg_cost']
                 
-                # 2. CALCULATE TRAILING STOP FROM RECENT HIGHS
+                if shares_held <= 0: continue # Skip if position is already closed
+                
+                # 4. Dynamic Tiers based on your Actual Entry Price
+                if avg_cost < 1.00:
+                    target_pct = 0.30    # 30% gain required for 2:1 target
+                    trail_pct = 0.15     # 15% trailing stop
+                elif avg_cost < 5.00:
+                    target_pct = 0.16    
+                    trail_pct = 0.10     
+                else:
+                    target_pct = 0.10    
+                    trail_pct = 0.08     
+
+                target_price = round(avg_cost * (1 + target_pct), 2)
+                
+                # 5. Calculate Trailing Stop from recent highs
                 stop_trigger = round(recent_high * (1.0 - trail_pct), 2)
                 
-                # Ensure we don't accidentally set a trigger above the current market price on a sudden drop
+                # Lock-in Rule: If it hit the target, never let the stop drop below breakeven
+                if recent_high >= target_price:
+                    stop_trigger = max(stop_trigger, avg_cost)
+
+                # Failsafe: Prevent triggers from floating above a sudden price drop
                 if stop_trigger >= current_price:
                     stop_trigger = round(current_price * 0.98, 2)
                 
-                # 3. HARD MINIMUM STOP LIMIT GAP
                 stop_limit = calculate_stop_gap(current_price, stop_trigger)
-                
+
+                # 6. Determine the Action / Status
                 if current_price <= stop_trigger:
-                    status = "SELL"
-                    color = "text-[#EF4444]" 
-                    reason = "Trailing Stop Breached"
-                elif current_price > (sma_50 * 1.25):
-                    status = "TRIM"
-                    color = "text-[#EAB308]" 
-                    reason = "Overextended (>25% Above 50 SMA)"
+                    status = "SELL ALL"
+                    color = "text-[#EF4444]" # Red
+                    reason = "Stop Loss Triggered"
+                elif current_price >= target_price:
+                    status = "TAKE PROFIT"
+                    color = "text-[#EAB308]" # Yellow
+                    reason = f"Target Hit (${target_price}). Sell Half, Trail Rest."
                 else:
                     status = "HOLD"
-                    color = "text-[#22C55E]" 
-                    reason = "Trend Healthy"
-                    
+                    color = "text-[#22C55E]" # Green
+                    if stop_trigger > avg_cost:
+                        reason = f"Risk-Free (Stop > ${avg_cost:.2f})"
+                    else:
+                        reason = "Trailing Stop Active"
+                        
                 results.append({
                     "ticker": ticker,
                     "current_price": current_price,
@@ -545,9 +582,11 @@ class BackendAPI:
                     "reason": reason
                 })
                 
-            sort_order = {"SELL": 0, "TRIM": 1, "HOLD": 2}
+            # Sort by urgency (Sells at the top, Holds at the bottom)
+            sort_order = {"SELL ALL": 0, "TAKE PROFIT": 1, "HOLD": 2}
             results.sort(key=lambda x: sort_order.get(x["status"], 3))
             return results
+            
         except Exception as e:
             return [{"ticker": "ERROR", "reason": str(e)}]
     
