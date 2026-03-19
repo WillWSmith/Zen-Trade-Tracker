@@ -145,12 +145,12 @@
                     
 <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 flex-shrink-0">
     
-    <div class="bg-white/5 backdrop-blur-xl border border-[#27272a] border-t-2 border-t-zen-green flex flex-col justify-center gap-2 h-36 p-5 relative shadow-[0_4px_20px_rgba(0,0,0,0.25)]">
-        <div class="flex justify-between items-start w-full">
+    <div class="bg-white/5 backdrop-blur-xl border border-[#27272a] border-t-2 border-t-zen-green flex flex-col h-36 p-5 relative shadow-[0_4px_20px_rgba(0,0,0,0.25)]">
+        <div class="flex justify-between items-start w-full mb-2">
             <span class="text-zen-gray text-[0.7rem] font-bold tracking-wider uppercase">Total Account</span>
             <i class="fas fa-briefcase text-white/10 text-xl absolute top-5 right-5"></i>
         </div>
-        <div class="w-full">
+        <div class="w-full mt-auto">
             <div id="val-account" class="text-3xl font-semibold text-white tracking-tight tabular-nums">$0.00</div>
             <div class="mt-2.5 h-1.5 w-full bg-black/60 rounded-full overflow-hidden flex shadow-inner">
                 <div id="bar-invested" class="h-full bg-zen-green transition-all duration-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" style="width: 0%"></div>
@@ -163,28 +163,34 @@
         </div>
     </div>
     
-    <div class="bg-white/5 backdrop-blur-xl border border-[#27272a] p-5 flex flex-col justify-center gap-2 h-36 relative shadow-[0_4px_20px_rgba(0,0,0,0.25)] hover:border-white/20 transition">
+    <div class="bg-white/5 backdrop-blur-xl border border-[#27272a] p-5 flex flex-col h-36 relative shadow-[0_4px_20px_rgba(0,0,0,0.25)] hover:border-white/20 transition">
         <div class="flex justify-between items-start w-full">
             <span class="text-zen-gray text-[0.7rem] font-bold tracking-wider uppercase">Today's P&L</span>
             <i class="fas fa-calendar-day text-white/10 text-xl absolute top-5 right-5"></i>
         </div>
-        <div id="val-today" class="text-3xl font-semibold tracking-tight tabular-nums w-full">$0.00 (0.0%)</div>
+        <div class="flex-1 flex items-center justify-center w-full">
+            <div id="val-today" class="text-3xl font-semibold tracking-tight tabular-nums text-center">$0.00 (0.0%)</div>
+        </div>
     </div>
     
-    <div class="bg-white/5 backdrop-blur-xl border border-[#27272a] p-5 flex flex-col justify-center gap-2 h-36 relative shadow-[0_4px_20px_rgba(0,0,0,0.25)] hover:border-white/20 transition">
+    <div class="bg-white/5 backdrop-blur-xl border border-[#27272a] p-5 flex flex-col h-36 relative shadow-[0_4px_20px_rgba(0,0,0,0.25)] hover:border-white/20 transition">
         <div class="flex justify-between items-start w-full">
             <span class="text-zen-gray text-[0.7rem] font-bold tracking-wider uppercase">Unrealized G/L</span>
             <i class="fas fa-arrow-trend-up text-white/10 text-xl absolute top-5 right-5"></i>
         </div>
-        <div id="val-unreal" class="text-3xl font-semibold tracking-tight tabular-nums w-full">$0.00 (0.0%)</div>
+        <div class="flex-1 flex items-center justify-center w-full">
+            <div id="val-unreal" class="text-3xl font-semibold tracking-tight tabular-nums text-center">$0.00 (0.0%)</div>
+        </div>
     </div>
     
-    <div class="bg-white/5 backdrop-blur-xl border border-[#27272a] p-5 flex flex-col justify-center gap-2 h-36 relative shadow-[0_4px_20px_rgba(0,0,0,0.25)] hover:border-white/20 transition">
+    <div class="bg-white/5 backdrop-blur-xl border border-[#27272a] p-5 flex flex-col h-36 relative shadow-[0_4px_20px_rgba(0,0,0,0.25)] hover:border-white/20 transition">
         <div class="flex justify-between items-start w-full">
             <span class="text-zen-gray text-[0.7rem] font-bold tracking-wider uppercase">Realized G/L (All Time)</span>
             <i class="fas fa-money-bill-wave text-white/10 text-xl absolute top-5 right-5"></i>
         </div>
-        <div id="val-real" class="text-3xl font-semibold tracking-tight tabular-nums w-full">$0.00 (0.0%)</div>
+        <div class="flex-1 flex items-center justify-center w-full">
+            <div id="val-real" class="text-3xl font-semibold tracking-tight tabular-nums text-center">$0.00 (0.0%)</div>
+        </div>
     </div>
 </div>
                     
