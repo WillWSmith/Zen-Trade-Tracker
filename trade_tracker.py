@@ -384,8 +384,9 @@ class BackendAPI:
                 avg_vol = float(v_series.tail(20).mean())
                 today_vol = float(v_series.iloc[-1])
                 
+                # TIGHTENED LIQUIDITY FLOOR (250k)
                 dollar_volume = avg_vol * current_price
-                if dollar_volume < 100000: continue
+                if dollar_volume < 250000: continue
                 
                 # ADX Calculation
                 tr1 = h_series - l_series
@@ -406,14 +407,16 @@ class BackendAPI:
                 
                 current_adx = float(adx.iloc[-1])
                 
-                if pd.isna(current_adx) or current_adx < 25: continue
+                # TIGHTENED MOMENTUM (ADX > 35)
+                if pd.isna(current_adx) or current_adx < 35: continue
                 
                 sma_200 = float(c_series.tail(200).mean())
                 sma_50 = float(c_series.tail(50).mean())
                 sma_10 = float(c_series.tail(10).mean())
                 high_52wk = float(h_series.tail(252).max())
                 
-                if current_price < (high_52wk * 0.75): continue
+                # RELATIVE STRENGTH CHECK (Within 15% of 52W High)
+                if current_price < (high_52wk * 0.85): continue
                 
                 if sma_50 > sma_200:
                     if current_price > sma_50 and current_price < (sma_50 * 1.20):
