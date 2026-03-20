@@ -110,6 +110,10 @@ class BackendAPI:
         net_deposits = 0.0
         history_enriched = []
         
+        # Track realized gains made specifically today
+        today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+        today_realized_gl = 0.0
+        
         for ticker, t_type, shares, price, date in raw_trades:
             trade_gl = None
             if t_type == 'Deposit': 
@@ -120,6 +124,8 @@ class BackendAPI:
                 net_deposits -= shares
             elif t_type == 'Dividend':
                 total_cash += (shares * price) 
+                if date.startswith(today_str):
+                    today_realized_gl += (shares * price)
             elif t_type == 'Buy':
                 total_cash -= (shares * price)
                 if ticker not in holdings_dict: holdings_dict[ticker] = {'shares': 0, 'avg_cost': 0.0}
@@ -133,6 +139,11 @@ class BackendAPI:
                 h = holdings_dict[ticker]
                 trade_gl = (price - h['avg_cost']) * shares
                 realized_gl += trade_gl
+                
+                # Add to today's PnL if closed today
+                if date.startswith(today_str):
+                    today_realized_gl += trade_gl
+                    
                 h['shares'] -= shares
                 if h['shares'] <= 0:
                     h['shares'] = 0
@@ -154,20 +165,39 @@ class BackendAPI:
         total_today_dlr = 0.0
         holdings_array = []
         
+        # BATCH DOWNLOAD FIX: Prevents yfinance from hanging the app
+        live_data = pd.DataFrame()
+        if active_tickers:
+            try:
+                batch_yf = yf.download(active_tickers, period="5d", progress=False)
+                if 'Close' in batch_yf:
+                    live_data = batch_yf['Close']
+            except:
+                pass
+        
         for ticker in active_tickers:
             data = holdings_dict[ticker]
             shares = data['shares']
             avg_cost = data['avg_cost']
-            try: 
-                fast_info = yf.Ticker(ticker).fast_info
-                current_price = fast_info.last_price
-                prev_close = fast_info.previous_close
-            except: 
-                current_price = avg_cost
-                prev_close = avg_cost
-                
-            if pd.isna(current_price): current_price = avg_cost
-            if pd.isna(prev_close): prev_close = current_price
+            
+            current_price = avg_cost
+            prev_close = avg_cost
+            
+            if not live_data.empty:
+                if len(active_tickers) == 1:
+                    c_series = live_data.dropna()
+                else:
+                    if ticker in live_data.columns:
+                        c_series = live_data[ticker].dropna()
+                    else:
+                        c_series = pd.Series()
+                        
+                if len(c_series) >= 1:
+                    current_price = float(c_series.iloc[-1])
+                if len(c_series) >= 2:
+                    prev_close = float(c_series.iloc[-2])
+                elif len(c_series) == 1:
+                    prev_close = current_price
             
             book_val = shares * avg_cost
             market_val = shares * current_price
@@ -183,6 +213,9 @@ class BackendAPI:
                 "current_price": float(current_price), "unreal_dlr": float(market_val - book_val),
                 "market_val": float(market_val) 
             })
+
+        # Add today's realized gains to the floating unrealized gains
+        total_today_dlr += today_realized_gl
 
         total_account_value = total_market_value + total_cash
         unreal_total_dlr = total_market_value - total_book_value
@@ -249,7 +282,7 @@ class BackendAPI:
             "today_dlr": float(total_today_dlr), "today_pct": float(today_pct),
             "total_market": float(total_market_value), "unreal_dlr": float(unreal_total_dlr),
             "unreal_pct": float(unreal_total_pct), "realized_gl": float(realized_gl),
-            "realized_pct": (realized_gl / net_deposits * 100) if net_deposits > 0 else 0.0,
+            "realized_pct": float((realized_gl / net_deposits * 100) if net_deposits > 0 else 0.0),
             "holdings": holdings_array, "history": history_enriched, "unique_tickers": unique_tickers,
             "chart_dates": chart_dates, "chart_values": [0 if pd.isna(x) else float(x) for x in chart_values]
         }
