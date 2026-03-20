@@ -110,10 +110,6 @@ class BackendAPI:
         net_deposits = 0.0
         history_enriched = []
         
-        # Track realized gains made specifically today
-        today_str = datetime.datetime.now().strftime("%Y-%m-%d")
-        today_realized_gl = 0.0
-        
         for ticker, t_type, shares, price, date in raw_trades:
             trade_gl = None
             if t_type == 'Deposit': 
@@ -124,8 +120,6 @@ class BackendAPI:
                 net_deposits -= shares
             elif t_type == 'Dividend':
                 total_cash += (shares * price) 
-                if date.startswith(today_str):
-                    today_realized_gl += (shares * price)
             elif t_type == 'Buy':
                 total_cash -= (shares * price)
                 if ticker not in holdings_dict: holdings_dict[ticker] = {'shares': 0, 'avg_cost': 0.0}
@@ -139,11 +133,6 @@ class BackendAPI:
                 h = holdings_dict[ticker]
                 trade_gl = (price - h['avg_cost']) * shares
                 realized_gl += trade_gl
-                
-                # Add to today's PnL if closed today
-                if date.startswith(today_str):
-                    today_realized_gl += trade_gl
-                    
                 h['shares'] -= shares
                 if h['shares'] <= 0:
                     h['shares'] = 0
@@ -165,39 +154,20 @@ class BackendAPI:
         total_today_dlr = 0.0
         holdings_array = []
         
-        # BATCH DOWNLOAD FIX: Prevents yfinance from hanging the app
-        live_data = pd.DataFrame()
-        if active_tickers:
-            try:
-                batch_yf = yf.download(active_tickers, period="5d", progress=False)
-                if 'Close' in batch_yf:
-                    live_data = batch_yf['Close']
-            except:
-                pass
-        
         for ticker in active_tickers:
             data = holdings_dict[ticker]
             shares = data['shares']
             avg_cost = data['avg_cost']
-            
-            current_price = avg_cost
-            prev_close = avg_cost
-            
-            if not live_data.empty:
-                if len(active_tickers) == 1:
-                    c_series = live_data.dropna()
-                else:
-                    if ticker in live_data.columns:
-                        c_series = live_data[ticker].dropna()
-                    else:
-                        c_series = pd.Series()
-                        
-                if len(c_series) >= 1:
-                    current_price = float(c_series.iloc[-1])
-                if len(c_series) >= 2:
-                    prev_close = float(c_series.iloc[-2])
-                elif len(c_series) == 1:
-                    prev_close = current_price
+            try: 
+                fast_info = yf.Ticker(ticker).fast_info
+                current_price = fast_info.last_price
+                prev_close = fast_info.previous_close
+            except: 
+                current_price = avg_cost
+                prev_close = avg_cost
+                
+            if pd.isna(current_price): current_price = avg_cost
+            if pd.isna(prev_close): prev_close = current_price
             
             book_val = shares * avg_cost
             market_val = shares * current_price
@@ -213,9 +183,6 @@ class BackendAPI:
                 "current_price": float(current_price), "unreal_dlr": float(market_val - book_val),
                 "market_val": float(market_val) 
             })
-
-        # Add today's realized gains to the floating unrealized gains
-        total_today_dlr += today_realized_gl
 
         total_account_value = total_market_value + total_cash
         unreal_total_dlr = total_market_value - total_book_value
@@ -282,12 +249,11 @@ class BackendAPI:
             "today_dlr": float(total_today_dlr), "today_pct": float(today_pct),
             "total_market": float(total_market_value), "unreal_dlr": float(unreal_total_dlr),
             "unreal_pct": float(unreal_total_pct), "realized_gl": float(realized_gl),
-            "realized_pct": float((realized_gl / net_deposits * 100) if net_deposits > 0 else 0.0),
+            "realized_pct": (realized_gl / net_deposits * 100) if net_deposits > 0 else 0.0,
             "holdings": holdings_array, "history": history_enriched, "unique_tickers": unique_tickers,
             "chart_dates": chart_dates, "chart_values": [0 if pd.isna(x) else float(x) for x in chart_values]
         }
 
-    # --- ZEN MASTER SCANNER (Goldilocks + Split-RS + Vol Guard) ---
     def run_swing_scanner(self, cash_available, total_account=100.0):
         try:
             eval_cash = max(cash_available, 5.0) 
@@ -319,16 +285,13 @@ class BackendAPI:
                 avg_v = float(v_s.tail(20).mean())
                 is_venture = '.V' in ticker
                 
-                # 1. LIQUIDITY & INSTITUTIONAL FOOTPRINT (1.5x / 2.0x Spike)
                 vol_mult = 2.0 if is_venture else 1.5
                 if (avg_v * curr) < 250000 or (float(v_s.iloc[-1]) < (avg_v * vol_mult)): continue 
                 
-                # 2. VOLATILITY GUARD (ATR % < 5%)
                 tr = pd.concat([(h_s-l_s), (h_s-c_s.shift(1)).abs(), (l_s-c_s.shift(1)).abs()], axis=1).max(axis=1)
                 atr = tr.rolling(14).mean().iloc[-1]
                 if (atr / curr) > 0.05: continue 
 
-                # 3. RSI (35-75) & ADX (25+)
                 plus_di = 100 * ((h_s.diff().clip(lower=0)).rolling(14).sum() / tr.rolling(14).sum())
                 minus_di = 100 * ((-l_s.diff().clip(lower=0)).rolling(14).sum() / tr.rolling(14).sum())
                 adx = ((plus_di - minus_di).abs() / (plus_di + minus_di).abs() * 100).rolling(14).mean()
@@ -340,14 +303,13 @@ class BackendAPI:
                 
                 if curr_adx < 25 or curr_rsi < 35 or curr_rsi > 75: continue
 
-                # 4. SPLIT RELATIVE STRENGTH & BACKBONE (200-MA / 50-MA)
                 h52 = float(h_s.tail(252).max())
                 sma50, sma200 = float(c_s.tail(50).mean()), float(c_s.tail(200).mean())
                 
                 if is_venture:
-                    if curr < (h52 * 0.85) or curr < sma50: continue # Strict Venture Belt
+                    if curr < (h52 * 0.85) or curr < sma50: continue
                 else:
-                    if curr < (h52 * 0.75) or curr < sma200: continue # Established Backbone
+                    if curr < (h52 * 0.75) or curr < sma200: continue
 
                 if curr < (sma50 * 1.20) and curr < float(c_s.tail(10).mean()):
                     buf = min((atr * 2) / curr, 0.15 if curr < 1.0 else 0.10)
