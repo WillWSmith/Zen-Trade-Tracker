@@ -254,6 +254,7 @@ class BackendAPI:
             "chart_dates": chart_dates, "chart_values": [0 if pd.isna(x) else float(x) for x in chart_values]
         }
 
+    # --- ZEN MASTER SCANNER (Goldilocks + Split-RS + Vol Guard) ---
     def run_swing_scanner(self, cash_available, total_account=100.0):
         try:
             eval_cash = max(cash_available, 5.0) 
@@ -285,13 +286,16 @@ class BackendAPI:
                 avg_v = float(v_s.tail(20).mean())
                 is_venture = '.V' in ticker
                 
+                # 1. LIQUIDITY & INSTITUTIONAL FOOTPRINT (1.5x / 2.0x Spike)
                 vol_mult = 2.0 if is_venture else 1.5
                 if (avg_v * curr) < 250000 or (float(v_s.iloc[-1]) < (avg_v * vol_mult)): continue 
                 
+                # 2. VOLATILITY GUARD (ATR % < 5%)
                 tr = pd.concat([(h_s-l_s), (h_s-c_s.shift(1)).abs(), (l_s-c_s.shift(1)).abs()], axis=1).max(axis=1)
                 atr = tr.rolling(14).mean().iloc[-1]
                 if (atr / curr) > 0.05: continue 
 
+                # 3. RSI (35-75) & ADX (25+)
                 plus_di = 100 * ((h_s.diff().clip(lower=0)).rolling(14).sum() / tr.rolling(14).sum())
                 minus_di = 100 * ((-l_s.diff().clip(lower=0)).rolling(14).sum() / tr.rolling(14).sum())
                 adx = ((plus_di - minus_di).abs() / (plus_di + minus_di).abs() * 100).rolling(14).mean()
@@ -303,13 +307,14 @@ class BackendAPI:
                 
                 if curr_adx < 25 or curr_rsi < 35 or curr_rsi > 75: continue
 
+                # 4. SPLIT RELATIVE STRENGTH & BACKBONE (200-MA / 50-MA)
                 h52 = float(h_s.tail(252).max())
                 sma50, sma200 = float(c_s.tail(50).mean()), float(c_s.tail(200).mean())
                 
                 if is_venture:
-                    if curr < (h52 * 0.85) or curr < sma50: continue
+                    if curr < (h52 * 0.85) or curr < sma50: continue # Strict Venture Belt
                 else:
-                    if curr < (h52 * 0.75) or curr < sma200: continue
+                    if curr < (h52 * 0.75) or curr < sma200: continue # Established Backbone
 
                 if curr < (sma50 * 1.20) and curr < float(c_s.tail(10).mean()):
                     buf = min((atr * 2) / curr, 0.15 if curr < 1.0 else 0.10)
@@ -405,6 +410,8 @@ def get_entrypoint():
 
 if __name__ == '__main__':
     init_db()
+    try: import pyi_splash; pyi_splash.close()
+    except ImportError: pass
     api = BackendAPI()
     window = webview.create_window('Zen Portfolios', url=get_entrypoint(), js_api=api, width=1280, height=760, background_color='#0a0a0c', resizable=True, frameless=True)
     api.window = window
