@@ -221,28 +221,44 @@ class BackendAPI:
                 return 0
             trades_df['cash_change'] = trades_df.apply(get_cash_change, axis=1)
 
-            full_range = pd.date_range(start=trades_df['date'].min(), end=pd.Timestamp(now).floor('D'))
+            full_range = pd.date_range(start=trades_df['date'].min(), end=pd.Timestamp(now).floor('D'), freq='D')
             daily_cash = trades_df.groupby('date')['cash_change'].sum().reindex(full_range, fill_value=0).cumsum()
+            
+            # Initialize daily equity with zeros on the full range
+            daily_equity = pd.Series(0.0, index=full_range)
 
             stock_trades = trades_df[trades_df['type'].isin(['Buy', 'Sell'])]
             if not stock_trades.empty:
                 daily_changes = stock_trades.groupby(['date', 'ticker'])['share_change'].sum().unstack(fill_value=0)
-                hist_prices = pd.DataFrame()
-                for ticker in daily_changes.columns:
-                    try:
-                        df = yf.Ticker(ticker).history(start=start_str)
-                        if not df.empty:
-                            if df.index.tz: df.index = df.index.tz_localize(None)
-                            hist_prices[ticker] = df['Close'].resample('D').ffill()
-                    except: pass
+                # Reindex changes to full range immediately to ensure we have all days
+                balances = daily_changes.reindex(full_range, fill_value=0).cumsum().fillna(0)
                 
-                if not hist_prices.empty:
-                    balances = daily_changes.reindex(full_range, fill_value=0).cumsum().reindex(hist_prices.index).ffill().fillna(0)
-                    equity = (balances * hist_prices).sum(axis=1)
-                    total_acc = equity + daily_cash.reindex(hist_prices.index).ffill()
-                    total_acc = total_acc[total_acc.index >= actual_start_date]
-                    chart_dates = [d.strftime('%b %d, %Y') for d in total_acc.index]
-                    chart_values = total_acc.values.tolist()
+                tickers_to_fetch = list(daily_changes.columns)
+                if tickers_to_fetch:
+                    try:
+                        # Fetch all prices at once for efficiency
+                        price_data = yf.download(tickers_to_fetch, start=full_range.min().strftime('%Y-%m-%d'), progress=False)['Close']
+                        if isinstance(price_data, pd.Series): # single ticker
+                            price_data = price_data.to_frame(name=tickers_to_fetch[0])
+                        
+                        if not price_data.empty:
+                            if price_data.index.tz: price_data.index = price_data.index.tz_localize(None)
+                            # Reindex price data to full_range and forward fill
+                            hist_prices = price_data.reindex(full_range).ffill().bfill().fillna(0)
+                            
+                            # Calculate equity: Balances * Prices
+                            daily_equity = (balances * hist_prices).sum(axis=1)
+                    except:
+                        pass
+            
+            # Combine Cash + Equity for the final account value
+            total_acc = daily_cash + daily_equity
+            
+            # Filter by timeframe
+            total_acc = total_acc[total_acc.index >= actual_start_date]
+            
+            chart_dates = [d.strftime('%b %d, %Y') for d in total_acc.index]
+            chart_values = [float(x) for x in total_acc.values]
 
         return {
             "total_account": float(total_account_value), "total_cash": float(total_cash),
