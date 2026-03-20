@@ -254,7 +254,7 @@ class BackendAPI:
             "chart_dates": chart_dates, "chart_values": [0 if pd.isna(x) else float(x) for x in chart_values]
         }
 
-    # --- ZEN MASTER SCANNER (Goldilocks + Split-RS + Vol Guard) ---
+    # --- ZEN MASTER SCANNER (Refined Volatility & Multi-Exchange) ---
     def run_swing_scanner(self, cash_available, total_account=100.0):
         try:
             eval_cash = max(cash_available, 5.0) 
@@ -286,16 +286,16 @@ class BackendAPI:
                 avg_v = float(v_s.tail(20).mean())
                 is_venture = '.V' in ticker
                 
-                # 1. LIQUIDITY & INSTITUTIONAL FOOTPRINT (1.5x / 2.0x Spike)
+                # 1. LIQUIDITY & VOLUME SPIKE
                 vol_mult = 2.0 if is_venture else 1.5
                 if (avg_v * curr) < 250000 or (float(v_s.iloc[-1]) < (avg_v * vol_mult)): continue 
                 
-                # 2. VOLATILITY GUARD (ATR % < 5%)
+                # 2. VOLATILITY GUARD (ATR 14)
                 tr = pd.concat([(h_s-l_s), (h_s-c_s.shift(1)).abs(), (l_s-c_s.shift(1)).abs()], axis=1).max(axis=1)
                 atr = tr.rolling(14).mean().iloc[-1]
-                if (atr / curr) > 0.05: continue 
+                if (atr / curr) > 0.08: continue # Cap entry at 8% daily ATR to avoid extreme junk
 
-                # 3. RSI (35-75) & ADX (25+)
+                # 3. RSI & ADX
                 plus_di = 100 * ((h_s.diff().clip(lower=0)).rolling(14).sum() / tr.rolling(14).sum())
                 minus_di = 100 * ((-l_s.diff().clip(lower=0)).rolling(14).sum() / tr.rolling(14).sum())
                 adx = ((plus_di - minus_di).abs() / (plus_di + minus_di).abs() * 100).rolling(14).mean()
@@ -307,18 +307,19 @@ class BackendAPI:
                 
                 if curr_adx < 25 or curr_rsi < 35 or curr_rsi > 75: continue
 
-                # 4. SPLIT RELATIVE STRENGTH & BACKBONE (200-MA / 50-MA)
+                # 4. TREND CONFIRMATION
                 h52 = float(h_s.tail(252).max())
                 sma50, sma200 = float(c_s.tail(50).mean()), float(c_s.tail(200).mean())
                 
                 if is_venture:
-                    if curr < (h52 * 0.85) or curr < sma50: continue # Strict Venture Belt
+                    if curr < (h52 * 0.85) or curr < sma50: continue 
                 else:
-                    if curr < (h52 * 0.75) or curr < sma200: continue # Established Backbone
+                    if curr < (h52 * 0.75) or curr < sma200: continue
 
-                if curr < (sma50 * 1.20) and curr < float(c_s.tail(10).mean()):
-                    buf = min((atr * 2) / curr, 0.15 if curr < 1.0 else 0.10)
-                    stop = curr * (1.0 - buf)
+                if curr < (sma50 * 1.25) and curr < float(c_s.tail(10).mean()):
+                    # Use Aligned Vol-Adjusted Logic
+                    atr_mult = 2.5 if is_venture else 2.0
+                    stop = curr - (atr * atr_mult)
                     risk = curr - stop
                     
                     if eval_account < 500: shares = int((eval_account * 0.50) / curr)
@@ -329,16 +330,18 @@ class BackendAPI:
                     if shares <= 0: continue
                     
                     suggestions.append({
-                        "ticker": ticker, "buy_price": curr, "stop_trigger": stop, 
-                        "stop_limit": calculate_stop_gap(curr, stop), "take_profit": curr + (risk * 2),
+                        "ticker": ticker, "buy_price": curr, "stop_trigger": round(stop, 2), 
+                        "stop_limit": calculate_stop_gap(curr, stop), "take_profit": round(curr + (risk * 2.5), 2),
                         "shares": shares, "total_cost": round(shares * curr, 2),
-                        "setup": "Institutional Swing", "sector": "Market Leader", "adx": curr_adx
+                        "setup": "Venture Momentum" if is_venture else "Institutional Swing", 
+                        "sector": "Market Leader", "adx": curr_adx
                     })
                                 
             suggestions.sort(key=lambda x: x['adx'], reverse=True)
             return suggestions[:3] 
         except Exception as e: return [{"ticker": "ERROR", "setup": str(e)}]
 
+    # --- ALIGNED PORTFOLIO AUDITOR (Trailing ATR Logic) ---
     def audit_portfolio(self, tickers):
         if not tickers: return []
         try:
@@ -354,26 +357,62 @@ class BackendAPI:
                     holdings[t]['avg_cost'] = cost / holdings[t]['shares']
                 elif ty == 'Sell': holdings[t]['shares'] -= s
 
-            data = yf.download(tickers, period="1y", progress=False)['Close']
+            # Download OHLC for ATR calculation
+            data = yf.download(tickers, period="1y", progress=False)
             results = []
+            
+            # Multi-ticker download returns different structures if single vs multiple tickers
+            if len(tickers) == 1:
+                close_df = data[['Close']]
+                high_df = data[['High']]
+                low_df = data[['Low']]
+            else:
+                close_df = data['Close']
+                high_df = data['High']
+                low_df = data['Low']
+
             for ticker in tickers:
-                c_s = data[ticker].dropna()
+                if ticker not in close_df: continue
+                c_s = close_df[ticker].dropna()
+                h_s = high_df[ticker].dropna()
+                l_s = low_df[ticker].dropna()
+                
+                if len(c_s) < 15: continue
+                
                 curr = float(c_s.iloc[-1])
                 recent_high = float(c_s.tail(14).max())
                 h = holdings.get(ticker, {'shares': 0, 'avg_cost': curr})
                 if h['shares'] <= 0: continue
                 
                 avg_c = h['avg_cost']
-                trail_pct = 0.15 if avg_c < 1.0 else (0.10 if avg_c < 5.0 else 0.08)
-                target_pct = 0.30 if avg_c < 1.0 else (0.16 if avg_c < 5.0 else 0.10)
-                target_p = round(avg_c * (1 + target_pct), 2)
+                is_venture = '.V' in ticker
                 
-                stop = round(recent_high * (1.0 - trail_pct), 2)
-                if recent_high >= target_p: stop = max(stop, avg_c)
+                # Calculate ATR for this stock
+                tr = pd.concat([(h_s-l_s), (h_s-c_s.shift(1)).abs(), (l_s-c_s.shift(1)).abs()], axis=1).max(axis=1)
+                atr = tr.rolling(14).mean().iloc[-1]
+                
+                # Aligned Multipliers: 2.0x for Standard, 2.5x for Venture
+                atr_mult = 2.5 if is_venture else 2.0
+                buffer = atr * atr_mult
+                
+                # Trailing Trigger Logic
+                stop = round(recent_high - buffer, 2)
+                
+                # Break-even Logic: Once target hit, move stop to cost
+                target_pct = 0.25 if is_venture else 0.15
+                target_p = avg_c * (1 + target_pct)
+                if recent_high >= target_p: stop = max(stop, round(avg_c, 2))
+                
+                # Safety Floor (Stop shouldn't be above current price)
                 if stop >= curr: stop = round(curr * 0.98, 2)
                 
                 status = "SELL" if curr <= stop else ("TRIM" if curr >= target_p else "HOLD")
-                results.append({"ticker": ticker, "current_price": curr, "stop_trigger": stop, "stop_limit": calculate_stop_gap(curr, stop), "status": status, "color": "text-[#EF4444]" if status == "SELL" else "text-[#22C55E]", "reason": "Stop Breached" if status == "SELL" else "Healthy"})
+                results.append({
+                    "ticker": ticker, "current_price": curr, 
+                    "stop_trigger": stop, "stop_limit": calculate_stop_gap(curr, stop), 
+                    "status": status, "color": "text-[#EF4444]" if status == "SELL" else "text-[#22C55E]", 
+                    "reason": "Volatility Breach" if status == "SELL" else ("Target Hit" if status == "TRIM" else "Healthy")
+                })
             return results
         except Exception as e: return [{"ticker": "ERROR", "reason": str(e)}]
 
