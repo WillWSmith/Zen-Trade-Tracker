@@ -377,49 +377,51 @@ class BackendAPI:
             data = yf.download(tickers, period="1y", progress=False)
             results = []
             
-            # Multi-ticker download returns different structures if single vs multiple tickers
             if len(tickers) == 1:
-                close_df = data[['Close']]
-                high_df = data[['High']]
-                low_df = data[['Low']]
+                close_df, high_df, low_df = data[['Close']], data[['High']], data[['Low']]
             else:
-                close_df = data['Close']
-                high_df = data['High']
-                low_df = data['Low']
+                close_df, high_df, low_df = data['Close'], data['High'], data['Low']
 
+            conn = sqlite3.connect(DB_PATH)
             for ticker in tickers:
                 if ticker not in close_df: continue
-                c_s = close_df[ticker].dropna()
-                h_s = high_df[ticker].dropna()
-                l_s = low_df[ticker].dropna()
-                
+                c_s, h_s, l_s = close_df[ticker].dropna(), high_df[ticker].dropna(), low_df[ticker].dropna()
                 if len(c_s) < 15: continue
                 
                 curr = float(c_s.iloc[-1])
-                recent_high = float(c_s.tail(14).max())
+                
+                # 1. Find the earliest 'Buy' date for this ticker to set the High-Water Mark anchor
+                buy_date_str = conn.execute("SELECT MIN(date) FROM trades WHERE ticker=? AND type='Buy'", (ticker,)).fetchone()[0]
+                if buy_date_str:
+                    buy_date = pd.to_datetime(buy_date_str).tz_localize(None)
+                    # Filter history from buy date to now
+                    valid_highs = h_s[h_s.index >= buy_date]
+                    high_water_mark = float(valid_highs.max()) if not valid_highs.empty else curr
+                else:
+                    high_water_mark = curr
+
                 h = holdings.get(ticker, {'shares': 0, 'avg_cost': curr})
                 if h['shares'] <= 0: continue
                 
                 avg_c = h['avg_cost']
                 is_venture = '.V' in ticker
                 
-                # Calculate ATR for this stock
+                # 2. ATR Calculation (14-day smoothed)
                 tr = pd.concat([(h_s-l_s), (h_s-c_s.shift(1)).abs(), (l_s-c_s.shift(1)).abs()], axis=1).max(axis=1)
                 atr = tr.rolling(14).mean().iloc[-1]
                 
-                # Aligned Multipliers: 2.0x for Standard, 2.5x for Venture
                 atr_mult = 2.5 if is_venture else 2.0
                 buffer = atr * atr_mult
                 
-                # Trailing Trigger Logic
-                stop = round(recent_high - buffer, 2)
+                # 3. Apply the Ratchet: Stop is anchored to the peak reached SINCE purchase
+                stop = round(high_water_mark - buffer, 2)
                 
-                # Break-even Logic: Once target hit, move stop to cost
+                # 4. Break-even Safety Logic
                 target_pct = 0.25 if is_venture else 0.15
                 target_p = avg_c * (1 + target_pct)
-                if recent_high >= target_p: stop = max(stop, round(avg_c, 2))
+                if high_water_mark >= target_p: 
+                    stop = max(stop, round(avg_c, 2))
                 
-                # Safety Floor (Stop shouldn't be above current price)
                 if stop >= curr: stop = round(curr * 0.98, 2)
                 
                 status = "SELL" if curr <= stop else ("TRIM" if curr >= target_p else "HOLD")
