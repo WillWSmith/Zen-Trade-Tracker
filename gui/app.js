@@ -292,6 +292,7 @@ async function submitCash(type) {
 
 async function openScanner() {
     const cash = currentData ? currentData.total_cash : 0;
+    const total = currentData ? currentData.total_account : 0;
     
     document.getElementById('scanner-modal').classList.remove('hidden');
     document.getElementById('scanner-results').innerHTML = `
@@ -302,7 +303,8 @@ async function openScanner() {
         </div>`;
     
     try {
-        const results = await pywebview.api.run_swing_scanner(cash);
+        // Pass both cash and total account value to the backend
+        const results = await pywebview.api.run_swing_scanner(cash, total);
         renderScannerResults(results);
     } catch(e) {
         document.getElementById('scanner-results').innerHTML = `<div class="col-span-3 text-center text-zen-red py-10 font-bold">Scanner Error: ${e}</div>`;
