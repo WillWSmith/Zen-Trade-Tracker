@@ -311,10 +311,9 @@ async function submitCash(type) {
 }
 
 async function openScanner() {
-    // Correctly fetch values from currentData state
     const cash = currentData ? currentData.total_cash : 0;
     const total = currentData ? currentData.total_account : 0;
-    
+
     document.getElementById('scanner-modal').classList.remove('hidden');
     document.getElementById('scanner-results').innerHTML = `
         <div class="col-span-3 text-center py-16 flex flex-col items-center justify-center">
@@ -322,9 +321,8 @@ async function openScanner() {
             <h3 class="text-white text-xl font-bold tracking-wider mb-2">Scanning TSX & TSX.V...</h3>
             <p class="text-gray-400 text-sm animate-pulse">Running momentum filters...</p>
         </div>`;
-    
+
     try {
-        // Pass account values to ensure correct position sizing
         const results = await pywebview.api.run_swing_scanner(cash, total);
         renderScannerResults(results);
     } catch(e) {
@@ -341,7 +339,14 @@ function renderScannerResults(results) {
     container.innerHTML = '';
 
     if (!results || results.length === 0 || results[0].ticker === "ERROR") {
-        container.innerHTML = '<div class="col-span-3 text-center text-gray-400 py-10">No setups found matching strict Zen criteria.</div>';
+        const msg = results && results[0] ? results[0].setup : 'Unknown error.';
+        container.innerHTML = `<div class="col-span-3 text-center text-gray-400 py-10">${msg}</div>`;
+        return;
+    }
+
+    // INFO sentinel — no setups found but not a hard error
+    if (results[0].ticker === "INFO") {
+        container.innerHTML = `<div class="col-span-3 text-center text-gray-400 py-10">${results[0].setup}</div>`;
         return;
     }
 
@@ -355,27 +360,37 @@ function renderScannerResults(results) {
     };
 
     results.forEach(res => {
-        // Handle 'Unknown' or missing sectors gracefully
         const sColor = sectorColors[res.sector] || 'bg-gray-500/20 text-gray-400';
-        const earnWarning = res.earnings_warning ? 
+        const earnWarning = res.earnings_warning ?
             `<div class="text-xs text-red-400 mt-1"><i class="fas fa-exclamation-triangle mr-1"></i>Earnings: ${res.earnings_date}</div>` : '';
+        const buyPrice = res.buy_price != null ? res.buy_price.toFixed(2) : '0.00';
+        const shares = res.shares != null ? res.shares : 0;
 
         const card = `
-            <div class="bg-gray-800/50 border border-gray-700 rounded-xl p-4 hover:border-indigo-500 transition-all cursor-pointer" onclick="prepareTrade('${res.ticker}', ${res.buy_price}, ${res.shares})">
+            <div class="bg-gray-800/50 border border-gray-700 rounded-xl p-4 hover:border-indigo-500 transition-all cursor-pointer" onclick="prepareTrade('${res.ticker}', ${res.buy_price}, ${shares})">
                 <div class="flex justify-between items-start mb-2">
                     <span class="text-xl font-bold text-white">${res.ticker}</span>
                     <span class="text-xs px-2 py-1 rounded ${sColor}">${res.sector || 'Misc'}</span>
                 </div>
                 <div class="grid grid-cols-2 gap-2 text-sm">
                     <div class="text-gray-400 text-xs uppercase">Buy Price</div>
-                    <div class="text-white text-right font-mono">$${res.buy_price.toFixed(2)}</div>
+                    <div class="text-white text-right font-mono">$${buyPrice}</div>
                     <div class="text-gray-400 text-xs uppercase">Target Shares</div>
-                    <div class="text-white text-right font-mono">${res.shares}</div>
+                    <div class="text-white text-right font-mono">${shares}</div>
                 </div>
                 ${earnWarning}
             </div>`;
         container.innerHTML += card;
     });
+}
+
+// Populates the trade form with scanner suggestion values and closes the modal.
+function prepareTrade(ticker, price, shares) {
+    closeScanner();
+    document.getElementById('ticker-input').value = ticker;
+    document.getElementById('price-input').value = price != null ? price.toFixed(2) : '';
+    document.getElementById('shares-input').value = shares || '';
+    setTickerInput(ticker); // triggers the brief green highlight on the ticker field
 }
 
 async function openAuditor() {
@@ -394,7 +409,6 @@ async function openAuditor() {
 
     try {
         const activeTickers = currentData.holdings.map(h => h.ticker);
-        // FIX: Pass portfolio_id so the auditor uses the correct buy date per portfolio
         const results = await pywebview.api.audit_portfolio(activeTickers, currentPortfolioId);
         renderAuditorResults(results);
     } catch(e) {
