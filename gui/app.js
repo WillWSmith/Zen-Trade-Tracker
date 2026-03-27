@@ -311,23 +311,24 @@ async function submitCash(type) {
 }
 
 async function openScanner() {
-    const cash  = currentData ? currentData.total_cash    : 0;
+    // Correctly fetch values from currentData state
+    const cash = currentData ? currentData.total_cash : 0;
     const total = currentData ? currentData.total_account : 0;
-
+    
     document.getElementById('scanner-modal').classList.remove('hidden');
     document.getElementById('scanner-results').innerHTML = `
         <div class="col-span-3 text-center py-16 flex flex-col items-center justify-center">
-            <i class="fas fa-satellite-dish fa-spin text-5xl text-indigo-400 mb-6 drop-shadow-[0_0_10px_rgba(129,140,248,0.6)]"></i>
+            <i class="fas fa-satellite-dish fa-spin text-5xl text-indigo-400 mb-6"></i>
             <h3 class="text-white text-xl font-bold tracking-wider mb-2">Scanning TSX & TSX.V...</h3>
-            <p class="text-zen-gray text-sm animate-pulse">Running momentum filters...</p>
+            <p class="text-gray-400 text-sm animate-pulse">Running momentum filters...</p>
         </div>`;
-
+    
     try {
+        // Pass account values to ensure correct position sizing
         const results = await pywebview.api.run_swing_scanner(cash, total);
         renderScannerResults(results);
     } catch(e) {
-        document.getElementById('scanner-results').innerHTML =
-            `<div class="col-span-3 text-center text-zen-red py-10 font-bold">Scanner Error: ${e}</div>`;
+        document.getElementById('scanner-results').innerHTML = `<div class="col-span-3 text-center text-red-500 py-10 font-bold">Scanner Error: ${e}</div>`;
     }
 }
 
@@ -339,83 +340,41 @@ function renderScannerResults(results) {
     const container = document.getElementById('scanner-results');
     container.innerHTML = '';
 
-    if (!results || results.length === 0) {
-        container.innerHTML = '<div class="col-span-3 text-center text-zen-gray py-10 text-lg border border-dashed border-white/10 rounded-xl bg-white/5">No setups found matching criteria.</div>';
+    if (!results || results.length === 0 || results[0].ticker === "ERROR") {
+        container.innerHTML = '<div class="col-span-3 text-center text-gray-400 py-10">No setups found matching strict Zen criteria.</div>';
         return;
     }
 
     const sectorColors = {
-        'Energy':      'bg-[#FF5722] text-white border border-[#FFAB91]',
-        'Materials':   'bg-[#FBC02D] text-black font-black border border-[#FFF9C4]',
-        'Technology':  'bg-[#00BCD4] text-black font-black border border-[#B2EBF2]',
-        'Financials':  'bg-[#4CAF50] text-black font-black border border-[#C8E6C9]',
-        'Healthcare':  'bg-[#E91E63] text-white border border-[#F8BBD0]',
-        'Industrials': 'bg-[#673AB7] text-white border border-[#D1C4E9]',
-        'Unknown':     'bg-[#9E9E9E] text-black font-black border border-[#F5F5F5]'
+        'Technology': 'bg-blue-500/20 text-blue-400',
+        'Financials': 'bg-emerald-500/20 text-emerald-400',
+        'Energy': 'bg-orange-500/20 text-orange-400',
+        'Healthcare': 'bg-red-500/20 text-red-400',
+        'Materials': 'bg-yellow-500/20 text-yellow-400',
+        'Industrials': 'bg-purple-500/20 text-purple-400'
     };
 
-    results.forEach(r => {
-        if (r.ticker === "ERROR") {
-            container.innerHTML += `<div class="col-span-3 text-center text-zen-red py-2">${r.setup}</div>`;
-            return;
-        }
+    results.forEach(res => {
+        // Handle 'Unknown' or missing sectors gracefully
+        const sColor = sectorColors[res.sector] || 'bg-gray-500/20 text-gray-400';
+        const earnWarning = res.earnings_warning ? 
+            `<div class="text-xs text-red-400 mt-1"><i class="fas fa-exclamation-triangle mr-1"></i>Earnings: ${res.earnings_date}</div>` : '';
 
-        const sColor = sectorColors[r.sector] || 'bg-indigo-600 text-white border border-indigo-400';
-        let setupIcon = '<i class="fas fa-bolt text-fuchsia-400"></i>';
-        if (r.setup.includes('52-Wk'))         setupIcon = '<i class="fas fa-fire text-rose-500"></i>';
-        else if (r.setup.includes('High Vol')) setupIcon = '<i class="fas fa-water text-sky-400"></i>';
-        else if (r.setup.includes('Golden'))   setupIcon = '<i class="fas fa-shield-halved text-yellow-400"></i>';
-
-        // Earnings warning badge — critical for overnight swing holds
-        const earningsBadge = r.earnings_warning
-            ? `<div class="flex items-center gap-1.5 mt-2 px-2 py-1 bg-amber-500/20 border border-amber-500/40 rounded text-amber-400 text-[0.65rem] font-bold uppercase tracking-wider">
-                    <i class="fas fa-triangle-exclamation"></i>
-                    Earnings ~${r.earnings_date} (${r.earnings_days}d) — overnight risk
-               </div>`
-            : '';
-
-        container.innerHTML += `
-            <div class="bg-white/5 backdrop-blur-md border border-indigo-500/30 rounded-xl p-5 transition relative overflow-hidden flex flex-col h-full hover:border-indigo-400 hover:shadow-[0_0_20px_rgba(99,102,241,0.2)]">
+        const card = `
+            <div class="bg-gray-800/50 border border-gray-700 rounded-xl p-4 hover:border-indigo-500 transition-all cursor-pointer" onclick="prepareTrade('${res.ticker}', ${res.buy_price}, ${res.shares})">
                 <div class="flex justify-between items-start mb-2">
-                    <div class="flex flex-col items-start gap-1">
-                        <h3 class="text-3xl font-extrabold text-white tracking-tight leading-none">${r.ticker}</h3>
-                        <div class="flex items-center text-[0.65rem] font-semibold text-zen-gray uppercase tracking-wider mt-1">
-                            ${setupIcon}
-                            <span class="ml-1.5 opacity-80">${r.setup}</span>
-                        </div>
-                    </div>
-                    <span class="px-2.5 py-1 text-[0.7rem] font-extrabold uppercase tracking-wider rounded border shadow-sm ${sColor}">${r.sector}</span>
+                    <span class="text-xl font-bold text-white">${res.ticker}</span>
+                    <span class="text-xs px-2 py-1 rounded ${sColor}">${res.sector || 'Misc'}</span>
                 </div>
-
-                ${earningsBadge}
-
-                <div class="space-y-2.5 text-sm tabular-nums flex-1 mt-3 border-t border-white/10 pt-4">
-                    <div class="flex justify-between border-b border-white/5 pb-2">
-                        <span class="text-zen-gray">Buy Limit:</span>
-                        <span class="text-white font-bold max-w-[100px] text-right">$${r.buy_price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}</span>
-                    </div>
-                    <div class="flex justify-between border-b border-white/5 pb-2">
-                        <span class="text-zen-gray mt-1">Position Size:</span>
-                        <div class="flex flex-col items-end leading-tight">
-                            <span class="text-white font-bold">${r.shares}</span>
-                            <span class="text-[0.65rem] opacity-60 font-normal mt-0.5">($${r.total_cost.toFixed(2)})</span>
-                        </div>
-                    </div>
-                    <div class="flex justify-between border-b border-white/5 pb-2">
-                        <span class="text-zen-gray" title="Recommended Stop Trigger">Stop Trigger:</span>
-                        <span class="text-[#EF4444] font-bold">$${r.stop_trigger.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}</span>
-                    </div>
-                    <div class="flex justify-between border-b border-white/5 pb-2">
-                        <span class="text-zen-gray" title="Recommended Stop Limit">Stop Limit:</span>
-                        <span class="text-[#EF4444] font-bold opacity-80">$${r.stop_limit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}</span>
-                    </div>
-                    <div class="flex justify-between pt-1">
-                        <span class="text-zen-gray">Target:</span>
-                        <span class="text-[#22C55E] font-bold">$${r.take_profit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}</span>
-                    </div>
+                <div class="grid grid-cols-2 gap-2 text-sm">
+                    <div class="text-gray-400 text-xs uppercase">Buy Price</div>
+                    <div class="text-white text-right font-mono">$${res.buy_price.toFixed(2)}</div>
+                    <div class="text-gray-400 text-xs uppercase">Target Shares</div>
+                    <div class="text-white text-right font-mono">${res.shares}</div>
                 </div>
-            </div>
-        `;
+                ${earnWarning}
+            </div>`;
+        container.innerHTML += card;
     });
 }
 
