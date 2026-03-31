@@ -1,0 +1,559 @@
+let equityChart = null;
+let currentChartTF = 'All Time';
+
+// State for Table Sorting
+let currentData = null;
+let holdSort = { column: 'allocation', asc: false };
+let histSort = { column: 'date', asc: false };
+
+// Track the active portfolio id so we can pass it to the auditor
+let currentPortfolioId = null;
+
+// Chart timeframe button state — tracked separately from data so a failed
+// refresh doesn't leave the button in a misleading active state.
+let pendingChartTF = null;
+
+window.addEventListener('pywebviewready', function() {
+    loadPortfolios();
+});
+
+function updateChartTimeframe(tf, btnElement) {
+    pendingChartTF = tf;
+    refreshData().then(() => {
+        currentChartTF = pendingChartTF;
+        document.querySelectorAll('.tf-btn').forEach(btn => {
+            btn.className = 'tf-btn text-zen-gray px-4 py-1.5 hover:text-white transition';
+        });
+        btnElement.className = 'tf-btn bg-white/10 text-white px-4 py-1.5 rounded shadow-sm transition';
+    }).catch(() => {
+        pendingChartTF = currentChartTF;
+    });
+}
+
+async function loadPortfolios() {
+    const portfolios = await pywebview.api.get_portfolios();
+    const select = document.getElementById('portfolio-select');
+    select.innerHTML = '';
+
+    if (Object.keys(portfolios).length === 0) {
+        select.innerHTML = '<option>No Portfolios</option>';
+        currentPortfolioId = null;
+        updateDashboard(null);
+        return;
+    }
+
+    for (const [name, id] of Object.entries(portfolios)) {
+        const option = document.createElement('option');
+        option.value = id;
+        option.textContent = name;
+        select.appendChild(option);
+    }
+    currentPortfolioId = select.value;
+    refreshData();
+}
+
+async function changePortfolio() {
+    currentPortfolioId = document.getElementById('portfolio-select').value;
+    refreshData();
+}
+
+async function refreshData() {
+    const id = document.getElementById('portfolio-select').value;
+    if (!id || id === "No Portfolios") return;
+
+    currentPortfolioId = id;
+    document.getElementById('val-account').textContent = "Loading...";
+
+    try {
+        const tf = pendingChartTF || currentChartTF;
+        currentData = await pywebview.api.get_dashboard_data(id, tf);
+        updateDashboard(currentData);
+    } catch (e) {
+        console.error("Error loading data:", e);
+        document.getElementById('val-account').textContent = "Error";
+        throw e;
+    }
+}
+
+function updateDashboard(data) {
+    if (!data) return;
+
+    const datalist = document.getElementById('ticker-suggestions');
+    if (datalist && data.unique_tickers) {
+        datalist.innerHTML = '';
+        data.unique_tickers.forEach(ticker => {
+            const opt = document.createElement('option');
+            opt.value = ticker;
+            datalist.appendChild(opt);
+        });
+    }
+
+    document.getElementById('val-account').textContent = `$${data.total_account.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+
+    let investedPct = 0; let cashPct = 0;
+    if (data.total_account > 0) {
+        investedPct = (data.total_market / data.total_account) * 100;
+        cashPct = (data.total_cash / data.total_account) * 100;
+    }
+    document.getElementById('bar-invested').style.width = `${Math.max(0, investedPct)}%`;
+    document.getElementById('bar-cash').style.width = `${Math.max(0, cashPct)}%`;
+    document.getElementById('lbl-invested').textContent = `${investedPct.toFixed(1)}%`;
+    document.getElementById('lbl-cash').textContent = `${cashPct.toFixed(1)}% ($${data.total_cash.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})})`;
+
+    const todayEl = document.getElementById('val-today');
+    todayEl.textContent = `${data.today_dlr >= 0 ? '+' : ''}$${data.today_dlr.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${data.today_pct >= 0 ? '+' : ''}${data.today_pct.toFixed(2)}%)`;
+    todayEl.className = data.today_dlr >= 0 ? 'text-3xl font-semibold tracking-tight tabular-nums text-[#22C55E]' : 'text-3xl font-semibold tracking-tight tabular-nums text-[#EF4444]';
+
+    const unrealEl = document.getElementById('val-unreal');
+    unrealEl.textContent = `${data.unreal_dlr >= 0 ? '+' : ''}$${data.unreal_dlr.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${data.unreal_pct >= 0 ? '+' : ''}${data.unreal_pct.toFixed(2)}%)`;
+    unrealEl.className = data.unreal_dlr >= 0 ? 'text-3xl font-semibold tracking-tight tabular-nums text-[#22C55E]' : 'text-3xl font-semibold tracking-tight tabular-nums text-[#EF4444]';
+
+    const realEl = document.getElementById('val-real');
+    realEl.textContent = `${data.realized_gl >= 0 ? '+' : ''}$${data.realized_gl.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${data.realized_pct >= 0 ? '+' : ''}${data.realized_pct.toFixed(2)}%)`;
+    realEl.className = data.realized_gl >= 0 ? 'text-3xl font-semibold tracking-tight tabular-nums text-[#22C55E]' : 'text-3xl font-semibold tracking-tight tabular-nums text-[#EF4444]';
+
+    renderHoldings();
+    renderHistory();
+    drawMainChart(data.chart_dates, data.chart_values);
+}
+
+function sortHoldings(col) {
+    if (holdSort.column === col) holdSort.asc = !holdSort.asc;
+    else { holdSort.column = col; holdSort.asc = (col === 'ticker'); }
+    renderHoldings();
+}
+
+function sortHistory(col) {
+    if (histSort.column === col) histSort.asc = !histSort.asc;
+    else { histSort.column = col; histSort.asc = false; }
+    renderHistory();
+}
+
+function renderHoldings() {
+    if (!currentData) return;
+
+    let sorted = [...currentData.holdings].sort((a, b) => {
+        let valA = a[holdSort.column]; let valB = b[holdSort.column];
+        if (typeof valA === 'string') return holdSort.asc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        return holdSort.asc ? valA - valB : valB - valA;
+    });
+
+    const body = document.getElementById('holdings-body');
+    body.innerHTML = '';
+    sorted.forEach(h => {
+        const tr = document.createElement('tr');
+        tr.className = 'table-row-hover transition-colors';
+        const colorClass = h.unreal_dlr >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]';
+        const prefix = h.unreal_dlr >= 0 ? '+' : '';
+        tr.innerHTML = `
+            <td class="px-2 py-3 font-bold cursor-pointer hover:text-zen-green transition" onclick="setTickerInput('${h.ticker}')" title="Click to queue trade">
+                ${h.ticker}
+            </td>
+            <td class="px-2 py-3 text-right text-zen-green bg-zen-green/5">${h.allocation.toFixed(1)}%</td>
+            <td class="px-2 py-3 text-right">${h.shares.toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
+            <td class="px-2 py-3 text-right">$${h.avg_cost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 4})}</td>
+            <td class="px-2 py-3 text-right">$${h.current_price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 4})}</td>
+            <td class="px-2 py-3 text-right font-semibold ${colorClass}">${prefix}$${h.unreal_dlr.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+        `;
+        body.appendChild(tr);
+    });
+}
+
+function renderHistory() {
+    if (!currentData) return;
+
+    let sorted = [...currentData.history].sort((a, b) => {
+        let valA = a[histSort.column]; let valB = b[histSort.column];
+        if (valA === null) valA = -999999999; if (valB === null) valB = -999999999;
+        if (typeof valA === 'string') return histSort.asc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        return histSort.asc ? valA - valB : valB - valA;
+    });
+
+    const body = document.getElementById('history-body');
+    body.innerHTML = '';
+    sorted.forEach(h => {
+        const tr = document.createElement('tr');
+        tr.className = 'table-row-hover transition-colors';
+
+        let typeClass = '';
+        if (h.type === 'Buy' || h.type === 'Deposit') typeClass = 'text-[#22C55E] font-medium bg-[#22C55E]/10 rounded px-2 py-0.5';
+        else if (h.type === 'Sell' || h.type === 'Withdraw') typeClass = 'text-[#EF4444] font-medium bg-[#EF4444]/10 rounded px-2 py-0.5';
+        else if (h.type === 'Dividend') typeClass = 'text-[#3B82F6] font-medium bg-[#3B82F6]/10 rounded px-2 py-0.5';
+
+        let tickerDisplay = h.ticker;
+        let sharesDisplay = h.shares.toLocaleString('en-US', {maximumFractionDigits: 4});
+        let priceDisplay = `$${h.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 4})}`;
+        let glDisplay = '-';
+        let glColor = 'text-[#a1a1aa]';
+
+        if (h.ticker === 'CASH') {
+            tickerDisplay = 'CASH';
+            sharesDisplay = '-';
+            priceDisplay = `$${h.shares.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        } else if (h.type === 'Dividend') {
+            sharesDisplay = '-';
+            priceDisplay = `+$${h.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        } else if (h.type === 'Sell' && h.trade_gl !== null) {
+            glDisplay = `${h.trade_gl >= 0 ? '+' : ''}$${h.trade_gl.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            glColor = h.trade_gl >= 0 ? 'text-[#22C55E] font-semibold' : 'text-[#EF4444] font-semibold';
+        }
+
+        tr.innerHTML = `
+            <td class="px-2 py-3 text-[#a1a1aa]">${h.date.split(' ')[0]}</td>
+            <td class="px-2 py-3"><span class="${typeClass}">${h.type}</span></td>
+            <td class="px-2 py-3 font-semibold text-white">${tickerDisplay}</td>
+            <td class="px-2 py-3 text-right">${sharesDisplay}</td>
+            <td class="px-2 py-3 text-right">${priceDisplay}</td>
+            <td class="px-2 py-3 text-right ${glColor}">${glDisplay}</td>
+        `;
+        body.appendChild(tr);
+    });
+}
+
+function drawMainChart(labels, dataPoints) {
+    const ctx = document.getElementById('equityChart').getContext('2d');
+    if (equityChart) equityChart.destroy();
+    if (!dataPoints || dataPoints.length === 0) return;
+
+    const isPositive = dataPoints[dataPoints.length - 1] >= dataPoints[0];
+    const lineColor = isPositive ? '#22C55E' : '#EF4444';
+    const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+    gradient.addColorStop(0, isPositive ? 'rgba(34, 197, 94, 0.35)' : 'rgba(239, 68, 68, 0.35)');
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+    equityChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: dataPoints,
+                borderColor: lineColor,
+                backgroundColor: gradient,
+                borderWidth: 2.5,
+                fill: true,
+                pointRadius: 0,
+                pointHoverRadius: 6,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { intersect: false, mode: 'index' },
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: '#888', maxTicksLimit: 6 } },
+                y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#a1a1aa' } }
+            }
+        }
+    });
+}
+
+async function addPortfolio() {
+    const name = prompt("Enter new portfolio name:");
+    if (name) { await pywebview.api.add_portfolio(name); loadPortfolios(); }
+}
+async function editPortfolio() {
+    const id = document.getElementById('portfolio-select').value;
+    const name = prompt("Enter new name:");
+    if (id && name) { await pywebview.api.edit_portfolio(id, name); loadPortfolios(); }
+}
+async function deletePortfolio() {
+    if (confirm("Permanently delete this portfolio?")) {
+        const id = document.getElementById('portfolio-select').value;
+        await pywebview.api.delete_portfolio(id); loadPortfolios();
+    }
+}
+
+async function submitTrade(type) {
+    const id = document.getElementById('portfolio-select').value;
+    const ticker = document.getElementById('ticker-input').value.toUpperCase();
+    const shares = parseFloat(document.getElementById('shares-input').value);
+    const price = parseFloat(document.getElementById('price-input').value);
+
+    if (!ticker || isNaN(shares) || isNaN(price)) {
+        alert("Please fill out Ticker, Shares, and Price correctly."); return;
+    }
+
+    await pywebview.api.add_trade(id, ticker, type, shares, price);
+    document.getElementById('shares-input').value = '';
+    document.getElementById('price-input').value = '';
+    refreshData();
+}
+
+async function submitDividend() {
+    const id = document.getElementById('portfolio-select').value;
+    const ticker = document.getElementById('ticker-input').value.toUpperCase();
+    const amount = parseFloat(document.getElementById('price-input').value);
+
+    if (!ticker || isNaN(amount) || amount <= 0) {
+        alert("To log a Dividend: Type the Ticker, leave Shares blank, and enter the total payout amount in the 'Price' box."); return;
+    }
+
+    await pywebview.api.add_trade(id, ticker, "Dividend", 1.0, amount);
+    document.getElementById('shares-input').value = '';
+    document.getElementById('price-input').value = '';
+    refreshData();
+}
+
+async function submitCash(type) {
+    const id = document.getElementById('portfolio-select').value;
+    const amount = parseFloat(document.getElementById('cash-input').value);
+
+    if (isNaN(amount) || amount <= 0) {
+        alert("Please enter a valid cash amount."); return;
+    }
+
+    await pywebview.api.add_trade(id, "CASH", type, amount, 1.0);
+    document.getElementById('cash-input').value = '';
+    refreshData();
+}
+
+async function openScanner() {
+    const cash = currentData ? currentData.total_cash : 0;
+    const total = currentData ? currentData.total_account : 0;
+
+    document.getElementById('scanner-modal').classList.remove('hidden');
+    document.getElementById('scanner-results').innerHTML = `
+        <div class="col-span-3 text-center py-16 flex flex-col items-center justify-center">
+            <i class="fas fa-satellite-dish fa-spin text-5xl text-indigo-400 mb-6"></i>
+            <h3 class="text-white text-xl font-bold tracking-wider mb-2">Scanning TSX & TSX.V...</h3>
+            <p class="text-gray-400 text-sm animate-pulse">Running momentum filters...</p>
+        </div>`;
+
+    try {
+        const results = await pywebview.api.run_swing_scanner(cash, total);
+        renderScannerResults(results);
+    } catch(e) {
+        document.getElementById('scanner-results').innerHTML = `<div class="col-span-3 text-center text-red-500 py-10 font-bold">Scanner Error: ${e}</div>`;
+    }
+}
+
+function closeScanner() {
+    document.getElementById('scanner-modal').classList.add('hidden');
+}
+
+function renderScannerResults(results) {
+    const container = document.getElementById('scanner-results');
+    container.innerHTML = '';
+
+    if (!results || results.length === 0 || results[0].ticker === "ERROR") {
+        const msg = results && results[0] ? results[0].setup : 'Unknown error.';
+        container.innerHTML = `<div class="col-span-3 text-center text-gray-400 py-10">${msg}</div>`;
+        return;
+    }
+
+    if (results[0].ticker === "INFO") {
+        container.innerHTML = `<div class="col-span-3 text-center text-gray-400 py-10">${results[0].setup}</div>`;
+        return;
+    }
+
+    const sectorColors = {
+        'Technology': 'bg-blue-500/20 text-blue-400',
+        'Financials': 'bg-emerald-500/20 text-emerald-400',
+        'Energy': 'bg-orange-500/20 text-orange-400',
+        'Healthcare': 'bg-red-500/20 text-red-400',
+        'Materials': 'bg-yellow-500/20 text-yellow-400',
+        'Industrials': 'bg-purple-500/20 text-purple-400'
+    };
+
+    results.forEach(res => {
+        const sColor = sectorColors[res.sector] || 'bg-gray-500/20 text-gray-400';
+        const earnWarning = res.earnings_warning ?
+            `<div class="text-xs text-red-400 mt-1"><i class="fas fa-exclamation-triangle mr-1"></i>Earnings: ${res.earnings_date}</div>` : '';
+        const buyPrice = res.buy_price != null ? res.buy_price.toFixed(2) : '0.00';
+        const shares = res.shares != null ? res.shares : 0;
+
+        const card = `
+            <div class="bg-gray-800/50 border border-gray-700 rounded-xl p-4 hover:border-indigo-500 transition-all cursor-pointer" onclick="prepareTrade('${res.ticker}', ${res.buy_price}, ${shares})">
+                <div class="flex justify-between items-start mb-2">
+                    <span class="text-xl font-bold text-white">${res.ticker}</span>
+                    <span class="text-xs px-2 py-1 rounded ${sColor}">${res.sector || 'Misc'}</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2 text-sm">
+                    <div class="text-gray-400 text-xs uppercase">Buy Price</div>
+                    <div class="text-white text-right font-mono">$${buyPrice}</div>
+                    <div class="text-gray-400 text-xs uppercase">Target Shares</div>
+                    <div class="text-white text-right font-mono">${shares}</div>
+                </div>
+                ${earnWarning}
+            </div>`;
+        container.innerHTML += card;
+    });
+}
+
+function prepareTrade(ticker, price, shares) {
+    closeScanner();
+    document.getElementById('ticker-input').value = ticker;
+    document.getElementById('price-input').value = price != null ? price.toFixed(2) : '';
+    document.getElementById('shares-input').value = shares || '';
+    setTickerInput(ticker);
+}
+
+async function openAuditor() {
+    if (!currentData || !currentData.holdings || currentData.holdings.length === 0) {
+        alert("You don't have any active stock holdings to audit.");
+        return;
+    }
+
+    document.getElementById('auditor-modal').classList.remove('hidden');
+    document.getElementById('auditor-results').innerHTML = `
+        <div class="col-span-3 text-center py-16 flex flex-col items-center justify-center">
+            <i class="fas fa-shield-halved text-5xl text-teal-400 mb-6 animate-pulse drop-shadow-[0_0_10px_rgba(45,212,191,0.6)]"></i>
+            <h3 class="text-white text-xl font-bold tracking-wider mb-2">Auditing Current Holdings...</h3>
+            <p class="text-zen-gray text-sm animate-pulse">Calculating Trailing Stops & Trend Health...</p>
+        </div>`;
+
+    try {
+        const activeTickers = currentData.holdings.map(h => h.ticker);
+        const results = await pywebview.api.audit_portfolio(activeTickers, currentPortfolioId);
+        renderAuditorResults(results);
+    } catch(e) {
+        document.getElementById('auditor-results').innerHTML =
+            `<div class="col-span-3 text-center text-zen-red py-10 font-bold">Auditor Error: ${e}</div>`;
+    }
+}
+
+function closeAuditor() {
+    document.getElementById('auditor-modal').classList.add('hidden');
+}
+
+/**
+ * Renders auditor result cards with all fixes applied:
+ *
+ * FIX 3 — REVIEW status: purple border, ATR warning, no misleading HOLD.
+ * FIX 4 — Shows gain_pct from cost basis (not distance from target price).
+ * FIX 5 — WATCH status: orange border, stop-approach warning.
+ * FIX 6 — Trim guidance: shows suggested share count and a pre-filled sell button.
+ */
+function renderAuditorResults(results) {
+    const container = document.getElementById('auditor-results');
+    container.innerHTML = '';
+
+    if (!results || results.length === 0) {
+        container.innerHTML = '<div class="col-span-3 text-center text-zen-gray py-10 text-lg border border-dashed border-white/10 rounded-xl bg-white/5">No audit data available.</div>';
+        return;
+    }
+
+    results.forEach(r => {
+        if (r.ticker === "ERROR") {
+            container.innerHTML += `<div class="col-span-3 text-center text-zen-red py-2">${r.reason}</div>`;
+            return;
+        }
+
+        // --- Status-based card styling ---
+        let borderColor, statusStyle;
+
+        switch (r.status) {
+            case 'SELL':
+                borderColor  = 'border-red-500/50 hover:border-red-400 hover:shadow-[0_0_20px_rgba(239,68,68,0.2)]';
+                statusStyle  = 'bg-red-500/20 text-red-400 border-red-500/50';
+                break;
+            case 'TRIM':
+                borderColor  = 'border-yellow-500/50 hover:border-yellow-400 hover:shadow-[0_0_20px_rgba(234,179,8,0.2)]';
+                statusStyle  = 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50';
+                break;
+            case 'WATCH':
+                // FIX 5 — new orange WATCH card
+                borderColor  = 'border-orange-500/50 hover:border-orange-400 hover:shadow-[0_0_20px_rgba(251,146,60,0.2)]';
+                statusStyle  = 'bg-orange-500/20 text-orange-400 border-orange-500/50';
+                break;
+            case 'REVIEW':
+                // FIX 3 — new purple REVIEW card (degenerate ATR)
+                borderColor  = 'border-violet-500/50 hover:border-violet-400 hover:shadow-[0_0_20px_rgba(167,139,250,0.2)]';
+                statusStyle  = 'bg-violet-500/20 text-violet-400 border-violet-500/50';
+                break;
+            default: // HOLD
+                borderColor  = 'border-teal-500/30 hover:border-teal-400 hover:shadow-[0_0_20px_rgba(20,184,166,0.2)]';
+                statusStyle  = 'bg-green-500/20 text-green-400 border-green-500/50';
+        }
+
+        // --- FIX 4: gain from cost basis label ---
+        const gainPct      = r.gain_pct != null ? r.gain_pct : 0;
+        const gainLabel    = `${gainPct >= 0 ? '+' : ''}${gainPct.toFixed(2)}%`;
+        const gainColor    = gainPct >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]';
+
+        // --- FIX 6: trim guidance row ---
+        let trimRow = '';
+        if ((r.status === 'TRIM' || r.status === 'SELL') && r.trim_shares > 0) {
+            const actionLabel = r.status === 'SELL' ? 'Sell All' : 'Sell (suggested)';
+            trimRow = `
+                <div class="mt-3 pt-3 border-t border-white/10">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-zen-gray text-xs uppercase tracking-wide">${actionLabel}</span>
+                        <span class="text-white font-bold font-mono">${r.trim_shares} shares</span>
+                    </div>
+                    <button
+                        onclick="prefillSell('${r.ticker}', ${r.trim_shares}, ${r.current_price})"
+                        class="w-full bg-[#EF4444]/10 border border-[#EF4444]/40 text-[#EF4444] font-bold py-1.5 rounded text-xs hover:bg-[#EF4444]/20 transition">
+                        <i class="fas fa-right-from-bracket mr-1"></i>Pre-fill Sell Order
+                    </button>
+                </div>`;
+        }
+
+        // --- Stop label: "Initial Stop" if new position (gain < 5%), else "Trail Trigger" ---
+        const isNewPosition   = gainPct < 5;
+        const stopLabel       = isNewPosition ? 'Initial Stop' : 'Trail Trigger';
+        const stopTitleText   = isNewPosition
+            ? 'Hard stop for new entry — exit immediately if breached'
+            : 'Recommended Trailing Stop Strike Price';
+
+        container.innerHTML += `
+            <div class="bg-white/5 backdrop-blur-md border ${borderColor} rounded-xl p-5 transition relative overflow-hidden flex flex-col h-full">
+                <div class="mb-4">
+                    <div class="flex justify-between items-start mb-1">
+                        <h3 class="text-2xl font-bold text-white tracking-tight">${r.ticker}</h3>
+                        <div class="flex flex-col items-end gap-1.5">
+                            <span class="px-2 py-0.5 text-[0.65rem] font-extrabold uppercase tracking-widest rounded border ${statusStyle} shadow-sm">${r.status}</span>
+                            <span class="${gainColor} text-xs font-bold tabular-nums">${gainLabel} from cost</span>
+                        </div>
+                    </div>
+                    <p class="${r.color} text-xs font-semibold uppercase tracking-wider opacity-80 mt-1">${r.reason}</p>
+                </div>
+
+                <div class="space-y-2.5 text-sm tabular-nums flex-1 mt-2">
+                    <div class="flex justify-between border-b border-white/10 pb-2">
+                        <span class="text-zen-gray">Current Price</span>
+                        <span class="text-white font-bold">$${r.current_price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}</span>
+                    </div>
+                    <div class="flex justify-between border-b border-white/10 pb-2">
+                        <span class="text-zen-gray" title="${stopTitleText}">${stopLabel}</span>
+                        <span class="text-[#EF4444] font-bold">$${r.stop_trigger.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}</span>
+                    </div>
+                    <div class="flex justify-between border-b border-white/10 pb-2">
+                        <span class="text-zen-gray" title="Recommended Stop Limit Price">Stop Limit</span>
+                        <span class="text-[#EF4444] font-bold opacity-80">$${r.stop_limit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}</span>
+                    </div>
+                    <div class="flex justify-between pb-2">
+                        <span class="text-zen-gray">Holding</span>
+                        <span class="text-white/70 font-mono">${r.total_shares} shares</span>
+                    </div>
+                </div>
+
+                ${trimRow}
+            </div>
+        `;
+    });
+}
+
+/**
+ * Pre-fills the trade form with a sell order from the auditor.
+ * Closes the auditor modal and scrolls the user back to the sidebar.
+ */
+function prefillSell(ticker, shares, price) {
+    closeAuditor();
+    document.getElementById('ticker-input').value = ticker;
+    document.getElementById('shares-input').value = shares;
+    document.getElementById('price-input').value  = price != null ? price.toFixed(2) : '';
+    setTickerInput(ticker);
+}
+
+function setTickerInput(ticker) {
+    const input = document.getElementById('ticker-input');
+    input.value = ticker;
+    input.focus();
+    input.classList.add('border-zen-green', 'bg-zen-green/20');
+    setTimeout(() => {
+        input.classList.remove('border-zen-green', 'bg-zen-green/20');
+    }, 300);
+}

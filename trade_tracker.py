@@ -40,7 +40,6 @@ def get_earnings_warning(ticker_obj):
     try:
         import signal
 
-        # --- timeout guard (Unix only; Windows falls back to bare call) ---
         def _fetch():
             return ticker_obj.calendar
 
@@ -102,16 +101,24 @@ def _safe_yf_download(tickers, **kwargs):
         data = yf.download(list(set(tickers)), progress=False, **kwargs)
         if data is None or data.empty:
             return None
-        # yf sometimes returns a flat Series or single-level columns for 1 ticker
         if isinstance(data.columns, pd.MultiIndex):
             return data
-        # Single ticker: promote to MultiIndex so callers don't need special-casing
         if len(tickers) == 1:
             ticker = list(tickers)[0]
             data.columns = pd.MultiIndex.from_tuples([(col, ticker) for col in data.columns])
         return data
     except Exception:
         return None
+
+
+def _tz_safe_localize(dt, reference_index):
+    """
+    Align a tz-naive datetime to the timezone of a pandas DatetimeIndex so
+    that comparisons never raise TypeError due to tz-mismatch.
+    """
+    if reference_index.tz is not None:
+        return dt.tz_localize(reference_index.tz)
+    return dt
 
 
 class BackendAPI:
@@ -383,7 +390,6 @@ class BackendAPI:
                         for item in resp.json().get("data", []) if item.get("d")
                     ]
                 except Exception:
-                    # One exchange failing shouldn't abort the whole scan
                     continue
 
             if not full_universe:
@@ -393,7 +399,6 @@ class BackendAPI:
             if data is None:
                 return [{"ticker": "ERROR", "setup": "yfinance download failed. Check your internet connection."}]
 
-            # Normalise to top-level field access regardless of MultiIndex structure
             try:
                 close_data = data['Close']
                 high_data  = data['High']
@@ -402,7 +407,6 @@ class BackendAPI:
             except KeyError:
                 return [{"ticker": "ERROR", "setup": "Unexpected data format returned by yfinance."}]
 
-            # Ensure DataFrames, not Series (happens when exactly 1 ticker returns data)
             if isinstance(close_data, pd.Series):
                 t = close_data.name or full_universe[0]
                 close_data = close_data.to_frame(t)
@@ -428,17 +432,13 @@ class BackendAPI:
                     avg_v = float(v_s.tail(20).mean())
                     is_venture = '.V' in ticker
 
-                    # 1. LIQUIDITY & VOLUME SPIKE
                     vol_floor = VOL_FLOOR_VENTURE if is_venture else VOL_FLOOR_TSX
-                    # FIX: Use 3-day average volume for spike check instead of single last day,
-                    # to avoid dropping valid setups that happened to scan on a lighter session.
                     recent_v  = float(v_s.tail(3).mean())
                     vol_mult  = 1.5 if is_venture else 1.2
                     dollar_vol = avg_v * curr
                     if dollar_vol < vol_floor or recent_v < (avg_v * vol_mult):
                         continue
 
-                    # 2. VOLATILITY GUARD (ATR 14)
                     tr = pd.concat([
                         (h_s - l_s),
                         (h_s - c_s.shift(1)).abs(),
@@ -447,7 +447,6 @@ class BackendAPI:
                     atr = tr.rolling(14).mean().iloc[-1]
                     if pd.isna(atr) or (atr / curr) > 0.08: continue
 
-                    # 3. RSI & ADX
                     plus_di  = 100 * ((h_s.diff().clip(lower=0)).rolling(14).sum() / tr.rolling(14).sum())
                     minus_di = 100 * ((-l_s.diff().clip(lower=0)).rolling(14).sum() / tr.rolling(14).sum())
                     adx_raw  = (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, float('nan')).abs() * 100
@@ -457,13 +456,11 @@ class BackendAPI:
                     delta   = c_s.diff()
                     gain    = delta.clip(lower=0).ewm(com=13).mean()
                     loss    = (-delta.clip(upper=0)).ewm(com=13).mean()
-                    # Guard against division by zero in RSI
                     rsi     = gain.combine(loss, lambda g, l: 100 if l == 0 else 100 - (100 / (1 + g / l)))
                     curr_rsi = float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else 50.0
 
                     if curr_adx < 25 or curr_rsi < 35 or curr_rsi > 75: continue
 
-                    # 4. TREND CONFIRMATION
                     h52    = float(h_s.tail(252).max())
                     sma50  = float(c_s.tail(50).mean())
                     sma200 = float(c_s.tail(200).mean())
@@ -473,18 +470,13 @@ class BackendAPI:
                     else:
                         if curr < (h52 * 0.75) or curr < sma200: continue
 
-                    # FIX: Loosened entry filter — original required BOTH conditions simultaneously,
-                    # which was too restrictive for trending stocks. Now uses OR logic: pass if the
-                    # stock is either not extended vs SMA50 OR has recent momentum.
                     sma10 = float(c_s.tail(10).mean())
                     if curr > (sma50 * 1.25) and curr > sma10:
-                        continue  # Extended AND losing short-term momentum — skip
+                        continue
 
-                    # 5. EARNINGS PROXIMITY CHECK
                     ticker_obj = yf.Ticker(ticker)
                     has_earnings, days_until, earn_date_str = get_earnings_warning(ticker_obj)
 
-                    # 6. SECTOR LOOKUP
                     try:
                         info = ticker_obj.info
                         raw_sector = info.get('sector', '') or ''
@@ -504,7 +496,7 @@ class BackendAPI:
                     risk = curr - stop
 
                     if risk <= 0:
-                        continue  # Guard against degenerate ATR
+                        continue
 
                     if eval_account < 500:
                         shares = int((eval_account * 0.25) / curr)
@@ -533,7 +525,6 @@ class BackendAPI:
                     })
 
                 except Exception:
-                    # Per-ticker failure should never abort the entire scan
                     continue
 
             suggestions.sort(key=lambda x: x['adx'], reverse=True)
@@ -543,7 +534,30 @@ class BackendAPI:
             return [{"ticker": "ERROR", "setup": str(e)}]
 
     def audit_portfolio(self, tickers, portfolio_id=None):
-        if not tickers: return []
+        """
+        Audits active holdings. Returns a status per ticker:
+          - HOLD   : healthy, within stop, below target
+          - WATCH  : price within 8% of trailing stop — act soon
+          - TRIM   : target hit, consider partial or full exit
+          - SELL   : price has breached the trailing stop
+          - REVIEW : ATR is degenerate (too wide to place a meaningful stop)
+
+        Stop calculation:
+          - New purchase (< target hit): ATR trailing stop from the high-water mark,
+            floored at cost basis so you never lock in a loss on a fresh entry.
+          - Target hit: stop is raised to at least cost basis (protect capital).
+          - Venture (.V) stocks use wider ATR multipliers (2.5x vs 2.0x).
+
+        FIX 1: Uses _safe_yf_download to handle single-ticker column normalisation.
+        FIX 2: Timezone-safe buy_date comparison via _tz_safe_localize().
+        FIX 3: Degenerate stops surface a REVIEW card instead of silently becoming HOLD.
+        FIX 4: gain_from_cost_basis shown in UI — what a swing trader actually cares about.
+        FIX 5: WATCH status for holdings approaching their stop (within 8%).
+        FIX 6: Suggested trim quantity returned so the UI can surface it.
+        """
+        if not tickers:
+            return []
+
         conn = sqlite3.connect(DB_PATH)
         try:
             if portfolio_id is not None:
@@ -553,9 +567,11 @@ class BackendAPI:
             else:
                 raw_trades = conn.execute("SELECT ticker, type, shares, price FROM trades").fetchall()
 
+            # Rebuild cost-basis & share count per holding
             holdings = {}
             for t, ty, s, p in raw_trades:
-                if t not in holdings: holdings[t] = {'shares': 0, 'avg_cost': 0.0}
+                if t not in holdings:
+                    holdings[t] = {'shares': 0.0, 'avg_cost': 0.0}
                 if ty == 'Buy':
                     cost = (holdings[t]['shares'] * holdings[t]['avg_cost']) + (s * p)
                     holdings[t]['shares'] += s
@@ -563,31 +579,42 @@ class BackendAPI:
                 elif ty == 'Sell':
                     holdings[t]['shares'] -= s
 
-            data = yf.download(tickers, period="1y", progress=False)
-            results = []
+            # --- FIX 1: use _safe_yf_download for consistent MultiIndex handling ---
+            data = _safe_yf_download(tickers, period="1y")
 
             if data is None or data.empty:
                 return [{"ticker": "ERROR", "reason": "yfinance returned no data for these tickers."}]
 
-            close_df = data['Close'] if len(tickers) > 1 else data[['Close']]
-            high_df  = data['High']  if len(tickers) > 1 else data[['High']]
-            low_df   = data['Low']   if len(tickers) > 1 else data[['Low']]
+            try:
+                close_df = data['Close']
+                high_df  = data['High']
+                low_df   = data['Low']
+            except KeyError:
+                return [{"ticker": "ERROR", "reason": "Unexpected data format from yfinance."}]
 
-            # If a single ticker returned, columns may just be field names not tickers
-            if len(tickers) == 1 and tickers[0] not in close_df.columns:
-                close_df = close_df.rename(columns=lambda _: tickers[0])
-                high_df  = high_df.rename(columns=lambda _: tickers[0])
-                low_df   = low_df.rename(columns=lambda _: tickers[0])
+            results = []
 
             for ticker in tickers:
-                if ticker not in close_df.columns: continue
+                if ticker not in close_df.columns:
+                    continue
+
                 c_s = close_df[ticker].dropna()
                 h_s = high_df[ticker].dropna()
                 l_s = low_df[ticker].dropna()
-                if len(c_s) < 15: continue
+                if len(c_s) < 15:
+                    continue
 
-                curr = float(c_s.iloc[-1])
+                curr     = float(c_s.iloc[-1])
+                h        = holdings.get(ticker, {'shares': 0.0, 'avg_cost': curr})
+                shares   = h['shares']
+                avg_c    = h['avg_cost']
 
+                if shares <= 0:
+                    continue
+
+                is_venture = '.V' in ticker
+
+                # --- FIX 2: timezone-safe high-water mark calculation ---
                 if portfolio_id is not None:
                     buy_date_row = conn.execute(
                         "SELECT MIN(date) FROM trades WHERE ticker=? AND type='Buy' AND portfolio_id=?",
@@ -599,57 +626,137 @@ class BackendAPI:
                     ).fetchone()
 
                 buy_date_str = buy_date_row[0] if buy_date_row else None
+                high_water_mark = curr  # safe default
+
                 if buy_date_str:
-                    buy_date = pd.to_datetime(buy_date_str, errors='coerce')
-                    if buy_date is not pd.NaT:
-                        buy_date = buy_date.tz_localize(None)
-                        valid_highs = h_s[h_s.index >= buy_date]
-                        high_water_mark = float(valid_highs.max()) if not valid_highs.empty else curr
-                    else:
-                        high_water_mark = curr
-                else:
-                    high_water_mark = curr
+                    buy_date_naive = pd.to_datetime(buy_date_str, errors='coerce')
+                    if buy_date_naive is not pd.NaT:
+                        try:
+                            # Align tz to yfinance index so comparison never raises TypeError
+                            buy_date_aligned = _tz_safe_localize(buy_date_naive, h_s.index)
+                            valid_highs = h_s[h_s.index >= buy_date_aligned]
+                            if not valid_highs.empty:
+                                high_water_mark = float(valid_highs.max())
+                        except Exception:
+                            high_water_mark = curr  # fallback — don't crash the whole audit
 
-                h = holdings.get(ticker, {'shares': 0, 'avg_cost': curr})
-                if h['shares'] <= 0: continue
-
-                avg_c = h['avg_cost']
-                is_venture = '.V' in ticker
-
+                # ATR (14-period)
                 tr = pd.concat([
                     (h_s - l_s),
                     (h_s - c_s.shift(1)).abs(),
                     (l_s - c_s.shift(1)).abs()
                 ], axis=1).max(axis=1)
-                atr = tr.rolling(14).mean().iloc[-1]
+                atr_series = tr.rolling(14).mean()
+                atr = atr_series.iloc[-1]
 
-                atr_mult = 2.5 if is_venture else 2.0
-                buffer = atr * atr_mult
-                stop   = round(high_water_mark - buffer, 2)
+                # --- FIX 3: surface degenerate ATR as REVIEW instead of silently overriding ---
+                if pd.isna(atr) or atr <= 0:
+                    results.append({
+                        "ticker":         ticker,
+                        "current_price":  curr,
+                        "stop_trigger":   round(avg_c * 0.95, 2),
+                        "stop_limit":     calculate_stop_gap(curr, round(avg_c * 0.95, 2)),
+                        "status":         "REVIEW",
+                        "color":          "text-[#A78BFA]",
+                        "reason":         "ATR unavailable — insufficient price history to calculate a meaningful stop.",
+                        "gain_pct":       round(((curr - avg_c) / avg_c) * 100, 2) if avg_c > 0 else 0.0,
+                        "trim_shares":    0,
+                        "total_shares":   round(shares, 4),
+                    })
+                    continue
 
+                atr_mult    = 2.5 if is_venture else 2.0
+                raw_stop    = high_water_mark - (atr * atr_mult)
+
+                # --- FIX 3 continued: degenerate stop (ATR wider than price range) ---
+                atr_pct = (atr / curr)
+                if atr_pct > 0.15:
+                    results.append({
+                        "ticker":         ticker,
+                        "current_price":  curr,
+                        "stop_trigger":   round(raw_stop, 2),
+                        "stop_limit":     calculate_stop_gap(curr, round(raw_stop, 2)),
+                        "status":         "REVIEW",
+                        "color":          "text-[#A78BFA]",
+                        "reason":         f"ATR is {atr_pct*100:.1f}% of price — stock is too volatile for a reliable trailing stop.",
+                        "gain_pct":       round(((curr - avg_c) / avg_c) * 100, 2) if avg_c > 0 else 0.0,
+                        "trim_shares":    0,
+                        "total_shares":   round(shares, 4),
+                    })
+                    continue
+
+                # Target price for this position
                 target_pct = 0.25 if is_venture else 0.15
                 target_p   = avg_c * (1 + target_pct)
+
+                # Raise stop to cost basis once target is hit (protect capital)
+                stop = raw_stop
                 if high_water_mark >= target_p:
                     stop = max(stop, round(avg_c, 2))
-                if stop >= curr:
-                    stop = round(curr * 0.98, 2)
 
-                upside_from_target = ((curr - target_p) / target_p * 100) if target_p > 0 else 0.0
+                # Initial stop-loss floor: never allow stop below 8% under cost basis
+                # This protects new entries — if ATR places the stop lower than -8% cost,
+                # we floor it at -8% so fresh purchases always have a hard initial stop.
+                initial_stop_floor = round(avg_c * 0.92, 2)
+                stop = max(stop, initial_stop_floor)
 
+                stop = round(stop, 2)
+
+                # --- FIX 4: gain from cost basis (what the trader actually cares about) ---
+                gain_pct = round(((curr - avg_c) / avg_c) * 100, 2) if avg_c > 0 else 0.0
+
+                # --- FIX 4: upside_beyond_target measured correctly from cost basis ---
+                gain_beyond_target_pct = round(((curr - target_p) / avg_c) * 100, 2) if avg_c > 0 else 0.0
+
+                # --- FIX 6: suggested trim quantity ---
+                # At target: suggest trimming to recover cost basis (sell enough to get money back)
+                # Aggressively extended: suggest selling half
+                cost_basis_recover_shares = round((avg_c * shares) / curr, 4) if curr > 0 else 0
+                half_shares               = round(shares / 2, 4)
+
+                # Determine status
                 if curr <= stop:
-                    status = "SELL"; reason = "Volatility Breach"; color = "text-[#EF4444]"
+                    status      = "SELL"
+                    reason      = "Trailing stop breached — exit position"
+                    color       = "text-[#EF4444]"
+                    trim_shares = round(shares, 4)  # sell all
+
+                elif curr >= target_p and gain_beyond_target_pct >= 15:
+                    status      = "TRIM"
+                    reason      = f"Up {gain_pct:+.1f}% from cost — trim aggressively, consider selling half"
+                    color       = "text-[#F59E0B]"
+                    trim_shares = half_shares
+
                 elif curr >= target_p:
-                    if upside_from_target >= 15:
-                        status = "TRIM"; reason = f"Target +{upside_from_target:.0f}% — trim aggressively"; color = "text-[#F59E0B]"
-                    else:
-                        status = "TRIM"; reason = f"Target hit (+{upside_from_target:.0f}%) — consider partial exit"; color = "text-[#22C55E]"
+                    status      = "TRIM"
+                    reason      = f"Target hit ({gain_pct:+.1f}% from cost) — partial exit to recover cost basis"
+                    color       = "text-[#22C55E]"
+                    trim_shares = cost_basis_recover_shares
+
+                # --- FIX 5: WATCH status — price within 8% of stop ---
+                elif (curr - stop) / curr <= 0.08:
+                    status      = "WATCH"
+                    reason      = f"Stop approaching (${stop:.2f}) — {gain_pct:+.1f}% from cost. Review position."
+                    color       = "text-[#FB923C]"
+                    trim_shares = 0
+
                 else:
-                    status = "HOLD"; reason = "Healthy"; color = "text-[#22C55E]"
+                    status      = "HOLD"
+                    reason      = f"Healthy — {gain_pct:+.1f}% from cost. Stop at ${stop:.2f}."
+                    color       = "text-[#22C55E]"
+                    trim_shares = 0
 
                 results.append({
-                    "ticker": ticker, "current_price": curr,
-                    "stop_trigger": stop, "stop_limit": calculate_stop_gap(curr, stop),
-                    "status": status, "color": color, "reason": reason,
+                    "ticker":         ticker,
+                    "current_price":  curr,
+                    "stop_trigger":   stop,
+                    "stop_limit":     calculate_stop_gap(curr, stop),
+                    "status":         status,
+                    "color":          color,
+                    "reason":         reason,
+                    "gain_pct":       gain_pct,
+                    "trim_shares":    trim_shares,
+                    "total_shares":   round(shares, 4),
                 })
 
             return results
@@ -657,7 +764,6 @@ class BackendAPI:
         except Exception as e:
             return [{"ticker": "ERROR", "reason": str(e)}]
         finally:
-            # FIX: Always close the connection, even if yf.download or processing raises
             conn.close()
 
     def export_csv(self):
@@ -682,7 +788,6 @@ class BackendAPI:
                 try:
                     df = pd.read_csv(path[0])
 
-                    # FIX: Validate required columns BEFORE touching the database
                     required_cols = {'Portfolio', 'Ticker', 'Type', 'Shares', 'Price', 'Date'}
                     missing = required_cols - set(df.columns)
                     if missing:
